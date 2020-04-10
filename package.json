@@ -1,0 +1,23 @@
+{
+  "name": "ultra-power",
+  "version": "0.0.0",
+  "description": "Ultra Power",
+  "main": "server.js",
+  "author": {
+    "name": ""
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean"
+  },
+  "devDependencies": {
+    "@types/node": "^8.0.14",
+    "typescript": "^3.2.2"
+  },
+  "dependencies": {
+    "@ebutler/phaser3-types": "^3.16.2",
+    "@types/express": "^4.17.6",
+    "express": "^4.17.1",
+    "phaser": "^3.22.0"
+  }
+}

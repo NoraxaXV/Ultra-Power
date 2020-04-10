@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29123.88
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9092AA53-FB77-4645-B42D-1CCCA6BD08BD}") = "Ultra Power", "Ultra Power.njsproj", "{787A42A0-B0AD-4045-A0F3-E58DB1ECCC04}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{787A42A0-B0AD-4045-A0F3-E58DB1ECCC04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{787A42A0-B0AD-4045-A0F3-E58DB1ECCC04}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{787A42A0-B0AD-4045-A0F3-E58DB1ECCC04}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{787A42A0-B0AD-4045-A0F3-E58DB1ECCC04}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0ED74ACB-F869-494C-8756-65BE48486DA9}
+	EndGlobalSection
+EndGlobal
