@@ -1,13 +1,80 @@
 ﻿console.log("hello!");
 
+
+// Currnet State of the player's animation
+enum AnimState
+{
+    STATE_WALKING
+};
+
 class Player
 {
-    sprite: Phaser.Physics.Arcade.Sprite;
+    animState: AnimState = AnimState.STATE_WALKING;
 
-    constructor(scene: Phaser.Scene, x: number, y: number, texture: string, frame: string | number)
+    constructor(public sprite: Phaser.Physics.Arcade.Sprite, public textureName: string)
     {
-        this.sprite = scene.physics.add.sprite.bind(scene, [x, y, texture, frame]);
+        this.createLpcAnimDatabase(textureName, [
+            { name: 'spell_cast', numOfFrames: 7 },
+            { name: 'thrust', numOfFrames: 8 },
+            { name: 'walk', numOfFrames: 9 },
+            { name: 'slash', numOfFrames: 6 },
+            { name: 'shoot', numOfFrames: 13 },
+        ]);
+
     }
+
+    // Create a database of animations for our sprite
+    createLpcAnimDatabase(textureName: string, listOfAnims: { name: string, numOfFrames: number }[]) {
+
+        // This is to account for the blank spots since not all anims take up a full row
+        var maxRowSize = 24;
+
+        var directions = ["up", "right", "down", "left"];
+
+        var lastIndex = 0;
+        for (let i = 0; i < listOfAnims.length; i++) {
+            let currAnim = listOfAnims[i];
+            let newReel: any = {}
+
+            for (let d = 0; d < 4; d++) {
+                newReel[directions[d]] = [];
+                for (let r = lastIndex; r < lastIndex + maxRowSize; r++) {
+                    if (r < currAnim.numOfFrames + lastIndex) {
+                        newReel[directions[d]].push(r);
+                    }
+                }
+                lastIndex += maxRowSize;
+
+                // Anims are set using the following pattern: name_animation_direction (eg: wizard_walk_up)
+                if (!game.anims.create({ key: `${textureName}_${currAnim.name}_${directions[d]}`, frames: game.anims.generateFrameNumbers(textureName, newReel[directions[d]]) })) {
+                    throw new Error(`Create anim failed! key=${textureName}_${currAnim.name}_${directions[d]}`);
+                }
+            }
+        }
+    }
+    // Updates the player's animation based on his animation state
+    updateAnimation()
+    {
+        switch (this.animState) {
+
+            case AnimState.STATE_WALKING:
+                // Update the animation last and give left/right animations precedence over up/down animations
+                if (this.sprite.body.velocity.x < 0) {
+                    this.sprite.anims.play(this.textureName + '_walk_left', true);
+                } else if (this.sprite.body.velocity.x > 0) {
+                    this.sprite.anims.play(this.textureName + '_walk_right', true);
+                } else if (this.sprite.body.velocity.y < 0) {
+                    this.sprite.anims.play(this.textureName + '_walk_up', true);
+                } else if (this.sprite.body.velocity.y > 0) {
+                    this.sprite.anims.play(this.textureName + '_walk_down', true);
+                } else {
+                    this.sprite.anims.stop();
+                }
+                break;
+            default: throw new Error('Invalid Anim State!');
+        }
+    }
+
 }
 
 class TileMap
@@ -16,9 +83,9 @@ class TileMap
     obstacles: Phaser.Tilemaps.StaticTilemapLayer;
     grass: Phaser.Tilemaps.StaticTilemapLayer;
 
-    constructor(scene: Phaser.Scene, config: Phaser.Types.Phaser.Tilemaps.TilemapConfig)
+    constructor(scene: Phaser.Scene, config: Phaser.Types.Tilemaps.TilemapConfig )
     {
-        this.map = scene.make.tilemap.bind(scene, [config]);
+        this.map = scene.make.tilemap(config);
     }
 }
  
@@ -37,7 +104,8 @@ class BootScene extends Phaser.Scene {
 		this.load.tilemapTiledJSON('map', 'assets/map/map.json');
 
 		// our two characters
-		this.load.spritesheet('player', 'assets/RPG_assets.png', { frameWidth: 16, frameHeight: 16 });
+        this.load.spritesheet('player', 'assets/RPG_assets.png', { frameWidth: 16, frameHeight: 16 });
+        this.load.spritesheet('wizard', 'assets/LPC_black_wizard_m.png', { frameWidth: 64, frameHeight: 64 });
 	};
 
 	create() {
@@ -68,13 +136,6 @@ class WorldScene extends Phaser.Scene {
         this.createMap();
 
         // Create Animations
-        this.createLpcAnimDatabase([
-            { name: 'spell_cast', numOfFrames: 7 },
-            { name: 'thrust', numOfFrames: 8 },
-            { name: 'walk', numOfFrames: 9 },
-            { name: 'slash', numOfFrames: 6 },
-            { name: 'shoot', numOfFrames: 13},
-		]);
 
         this.player = this.createPlayer();
 
@@ -93,7 +154,8 @@ class WorldScene extends Phaser.Scene {
 
     createPlayer()
     {
-        this.player = new Player(this, 50, 100, 'player', 6);
+        this.player = new Player(this.physics.add.sprite(50, 100, 'wizard', 0), 'wizard');
+
 
         this.physics.world.bounds.width = this.map.widthInPixels;
         this.physics.world.bounds.height = this.map.heightInPixels;
@@ -103,47 +165,26 @@ class WorldScene extends Phaser.Scene {
         return this.player; 
 	}
 
-    createLpcAnimDatabase(listOfAnims: { name: string, numOfFrames: number }[]) {
-		let lpcReels: any = {};
-
-		var maxRowSize = 24;
-		var directions = ["up", "right", "down", "left"];
-
-		var lastIndex = 0;
-		for (let i = 0; i < listOfAnims.length; i++) {
-			let currAnim = listOfAnims[i];
-            let newReel: any = {}
-
-			for (let d = 0; d < 4; d++) {
-				newReel[directions[d]] = [];
-				for (let r = lastIndex; r < lastIndex + maxRowSize; r++) {
-                    if (r < currAnim.numOfFrames + lastIndex) {
-						newReel[directions[d]].push(r);
-					}
-				}
-				lastIndex += maxRowSize;
-            }
-            lpcReels[currAnim.name] = newReel;
-		}
-
-		return lpcReels;
-	}
-
+    
     update(time: number, delta: number) {
 
-        this.player.setVelocity(0, 0);
+        this.player.sprite.setVelocity(0, 0);
 
 		// Horizontal Movement
 		if (this.cursors.left.isDown) {
-			this.player.setVelocityX(-80);
+            this.player.sprite.setVelocityX(-80);
 		} else if (this.cursors.right.isDown) {
-			this.player.setVelocityX(80);
+            this.player.sprite.setVelocityX(80);
 		}
 
 		// Vertical Movement
-		if (this.cursors.up.isDown) {
+        if (this.cursors.up.isDown) {
+            this.player.sprite.setVelocityY(-80);
+        } else if (this.cursors.down.isDown) {
+            this.player.sprite.setVelocityY(80);
+        }
 
-		}
+        this.player.updateAnimation();
 	}
 };
 
@@ -152,7 +193,7 @@ var config = {
 	parent: 'content',
 	width: 640,
 	height: 480,
-	zoom: 2,
+	zoom: 1,
 	pixelArt: true,
 	physics: {
 		default: 'arcade',
