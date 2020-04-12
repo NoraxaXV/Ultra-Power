@@ -2,8 +2,21 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "es6",
-    "lib": ["es6"],
-    "sourceMap": true
+    "lib": [ "es6" ],
+    "sourceMap": true,
+    "alwaysStrict": true,
+    "allowUnreachableCode": false,
+    "pretty": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "experimentalDecorators": true,
+    "typeRoots": [
+      "./node_modules/phaser/types"
+    ],
+    "types": [
+      "Phaser"
+    ]
   },
   "exclude": [
     "node_modules"

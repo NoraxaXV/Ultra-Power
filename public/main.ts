@@ -1,21 +1,27 @@
-﻿import * as Phaser from 'phaser';
-class Player {
+﻿console.log("hello!");
 
+class Player
+{
+    sprite: Phaser.Physics.Arcade.Sprite;
+
+    constructor(scene: Phaser.Scene, x: number, y: number, texture: string, frame: string | number)
+    {
+        this.sprite = scene.physics.add.sprite.bind(scene, [x, y, texture, frame]);
+    }
 }
 
-class Map {
-	tiles: Phaser.Tilemaps.Tilemap;
-	obstacles: Phaser.Tilemaps.Tileset;
-	grass: Phaser.Tilemaps.Tileset;
+class TileMap
+{
+    map: Phaser.Tilemaps.Tilemap;
+    obstacles: Phaser.Tilemaps.StaticTilemapLayer;
+    grass: Phaser.Tilemaps.StaticTilemapLayer;
+
+    constructor(scene: Phaser.Scene, config: Phaser.Types.Phaser.Tilemaps.TilemapConfig)
+    {
+        this.map = scene.make.tilemap.bind(scene, [config]);
+    }
 }
-
-class Game {
-
-	constructor(public map: Map, public player: Player)
-	{
-
-	}
-}
+ 
 
 class BootScene extends Phaser.Scene {
 
@@ -32,7 +38,6 @@ class BootScene extends Phaser.Scene {
 
 		// our two characters
 		this.load.spritesheet('player', 'assets/RPG_assets.png', { frameWidth: 16, frameHeight: 16 });
-
 	};
 
 	create() {
@@ -41,82 +46,96 @@ class BootScene extends Phaser.Scene {
 };
 
 class WorldScene extends Phaser.Scene {
-	constructor() {
+
+    map: Phaser.Tilemaps.Tilemap;
+    grass: Phaser.Tilemaps.StaticTilemapLayer;
+    obstacles: Phaser.Tilemaps.StaticTilemapLayer;
+
+    player: Player;
+    cursors: Phaser.Types.Input.Keyboard.CursorKeys;
+
+    constructor()
+    {
 		super('WorldScene');
 	}
 
-	preload() {
-
+    preload()
+    {
 	}
 
-	create() {
-		this.createMap();
+    create() {
 
-		// Create Animations
-		this.createLpcAnimDatabase([
-			new Anim('spell_cast', 7),
-			new Anim('thrust', 8),
-			new Anim('walk', 9),
-			new Anim('slash', 6),
-			new Anim('shoot', 13),
+        this.createMap();
+
+        // Create Animations
+        this.createLpcAnimDatabase([
+            { name: 'spell_cast', numOfFrames: 7 },
+            { name: 'thrust', numOfFrames: 8 },
+            { name: 'walk', numOfFrames: 9 },
+            { name: 'slash', numOfFrames: 6 },
+            { name: 'shoot', numOfFrames: 13},
 		]);
 
-		this.createPlayer();
+        this.player = this.createPlayer();
 
-		this.cursors = this.input.keyboard.createCursorKeys();
-
+        this.cursors = this.input.keyboard.createCursorKeys();
 	}
 
-	createMap() {
-		const map = this.make.tilemap({ key: 'map' });
-		this.tiles = map.addTilesetImage('spritesheet', 'tiles');
+    createMap()
+    {
+        this.map = this.make.tilemap({ key: 'map' });
+        const tiles = this.map.addTilesetImage('spritesheet', 'tiles');
 
-		this.grass = map.createStaticLayer('Grass', this.tiles, 0, 0);
-		this.obstacles = map.createStaticLayer('Obstacles', this.tiles, 0, 0);
-		this.obstacles.setCollisionByExclusion([-1]);
+        this.grass = this.map.createStaticLayer('Grass', tiles, 0, 0);
+        this.obstacles = this.map.createStaticLayer('Obstacles', tiles, 0, 0);
+        this.obstacles.setCollisionByExclusion([-1]);
 	}
 
-	createPlayer() {
-		this.player = this.physics.add.sprite(50, 100, 'player', 6);
-		this.physics.world.bounds.width = this.map.widthInPixels;
-		this.physics.world.bounds.height = this.map.heightInPixels;
-		this.player.setCollideWorldBounds(true);
+    createPlayer()
+    {
+        this.player = new Player(this, 50, 100, 'player', 6);
+
+        this.physics.world.bounds.width = this.map.widthInPixels;
+        this.physics.world.bounds.height = this.map.heightInPixels;
+
+        this.player.sprite.setCollideWorldBounds(true);
+
+        return this.player; 
 	}
 
-	createLpcAnimDatabase(listOfAnims) {
-		let lpcReels = {};
+    createLpcAnimDatabase(listOfAnims: { name: string, numOfFrames: number }[]) {
+		let lpcReels: any = {};
 
 		var maxRowSize = 24;
 		var directions = ["up", "right", "down", "left"];
 
 		var lastIndex = 0;
 		for (let i = 0; i < listOfAnims.length; i++) {
-			let anim = listOfAnims[i];
-			let newReel = {}
-			let startIndex = lastIndex + 1;
+			let currAnim = listOfAnims[i];
+            let newReel: any = {}
 
 			for (let d = 0; d < 4; d++) {
 				newReel[directions[d]] = [];
 				for (let r = lastIndex; r < lastIndex + maxRowSize; r++) {
-					if (r < anim.numOfFrames + lastIndex) {
+                    if (r < currAnim.numOfFrames + lastIndex) {
 						newReel[directions[d]].push(r);
 					}
 				}
 				lastIndex += maxRowSize;
-			}
-
-			let lpcReels[anim.name] = newReel;
+            }
+            lpcReels[currAnim.name] = newReel;
 		}
 
-		return let lpcReels;
+		return lpcReels;
 	}
 
-	update(time, delta) {
-		this.player.body.setVelocity(0);
+    update(time: number, delta: number) {
+
+        this.player.setVelocity(0, 0);
 
 		// Horizontal Movement
 		if (this.cursors.left.isDown) {
-			this.player.body.setVelocityX(-80);
+			this.player.setVelocityX(-80);
 		} else if (this.cursors.right.isDown) {
 			this.player.setVelocityX(80);
 		}
