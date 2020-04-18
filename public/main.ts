@@ -41,7 +41,7 @@ enum LPCAnims
 
 interface AnimData
 {
-    name: string
+    name: LPCAnims
     numOfFrames: number
     loop?: number;
     hasOverize?: boolean;
@@ -52,50 +52,82 @@ class Player
     animParameters = {
         direction: Directions.Down
     };
-    attackRate =  1;
+    attackAnim: LPCAnims;
+    attackRate = 1;
     speed = 8;
 
-    constructor(public sprite: Phaser.Physics.Arcade.Sprite, public textureName: string, loadOversizeAnims: boolean = false)
+    constructor(public sprite: Phaser.Physics.Arcade.Sprite, public textureName: string, oversizeName: LPCAnims = null)
     {
         this.createLpcAnimDatabase(textureName, [
-            { name: 'spell_cast', numOfFrames: 7, loop: 1 },
-            { name: 'thrust', numOfFrames: 8, loop: 1 },
-            { name: 'walk', numOfFrames: 9, loop: -1 },
-            { name: 'slash', numOfFrames: 6, loop: 1 },
-            { name: 'shoot', numOfFrames: 13, loop: 1 },
-        ], loadOversizeAnims);
+            { name: LPCAnims.spell_cast, numOfFrames: 7, loop: 1 },
+            { name: LPCAnims.thrust, numOfFrames: 8, loop: 1 },
+            { name: LPCAnims.walk, numOfFrames: 9, loop: -1 },
+            { name: LPCAnims.slash, numOfFrames: 6, loop: 1 },
+            { name: LPCAnims.shoot, numOfFrames: 13, loop: 1 },
+        ], oversizeName);
     }
     
     // Create a database of animations for our sprite
-    createLpcAnimDatabase(textureName: string, listOfAnims: AnimData[], loadOverizeAnims: boolean) {
+    createLpcAnimDatabase(textureName: string, listOfAnims: AnimData[], oversizeName: LPCAnims = null) {
         // This is to account for the blank spots since not all anims take up a full row
         var maxRowSize = 24;
-        var oversizeAnimName = '';
         var directions = ["up", "left", "down", "right"];
-
         var lastIndex = 0;
+        var lastOversizeIndex = 56;
+
         for (let i = 0; i < listOfAnims.length; i++) {
             let currAnim = listOfAnims[i];
+            let isOversize = currAnim.name === oversizeName;
 
-            for (let d = 0; d < 4; d++) {
+            // Go through each of the four directions
+            for (let d = 0; d < 4; d++)
+            {
                 let reel: number[] = [];
 
-                for (let r = lastIndex; r < lastIndex + maxRowSize; r++) {
-                    if (r < currAnim.numOfFrames + lastIndex) {
-                        reel.push(r);
+                if (!isOversize)
+                {
+                    // Handles regular anims
+                    for (let r = lastIndex; r < lastIndex + maxRowSize; r++)
+                    {
+                        if (r < currAnim.numOfFrames + lastIndex)
+                        {
+                            reel.push(r);
+                        }
+                    }
+
+                    
+
+                    // console.log(`${ textureName }_${ currAnim.name }_${directions[d]} = ${reel}`);
+                    // Anims are set using the following pattern: name_animation_direction (eg: wizard_walk_up)
+                    if (!game.anims.create({ key: `${textureName}_${currAnim.name}_${directions[d]}`, frames: game.anims.generateFrameNumbers(textureName, { frames: reel }), repeat: currAnim.loop }))
+                    {
+                        throw new Error(`Create anim failed, invalid key! animKey = ${textureName}_${currAnim.name}_${directions[d]}`);
                     }
                 }
-                lastIndex += maxRowSize;
-                // console.log(`${ textureName }_${ currAnim.name }_${directions[d]} = ${reel}`);
-                // Anims are set using the following pattern: name_animation_direction (eg: wizard_walk_up)
-                if (!currAnim.hasOverize) {
-                    if (!game.anims.create({ key: `${textureName}_${currAnim.name}_${directions[d]}`, frames: game.anims.generateFrameNumbers(textureName, { frames: reel }), repeat: currAnim.loop })) {
-                        throw new Error(`Create anim failed!`);
+                else
+                {
+                    // Handles special oversize anims
+                    for (let r = lastOversizeIndex; r < lastOversizeIndex + 8; r++)
+                    {
+                        reel.push(r);
                     }
-                } else if (oversizeAnimName === '') {
-                    oversizeAnimName = currAnim.name;
-                } else console.warn('Can only have one anim marked as hasOversize, the anim ' + currAnim.name + 'will fail to load');
+                    lastOversizeIndex += 8;
+                    
+                    let animKey = `${textureName}_${currAnim.name}_${directions[d]}`;
+                    let loadName = textureName + '_oversize';
+
+                    console.log(`creating oversize ${animKey} with anim reel ${reel} and textureName ${loadName}`);
+                    // Handle oversize anims
+                    if (!game.anims.create({ key: animKey, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName }))
+                    {
+                        throw new Error(`Create anim failed, invalid key! animKey = ${textureName}_${currAnim.name}_${directions[d]}`);
+                    }
+                }
+
+                // Always increment even if we loaded oversize to ignore gaps
+                lastIndex += maxRowSize;
             }
+            
         }
     }
 
@@ -157,22 +189,26 @@ class Player
 
             case AnimState.STATE_WALKING:
                 if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
-                    this.playAnim(LPCAnims.walk);
+                    this.playAnim(LPCAnims.walk, true);
                 else
                     this.sprite.anims.stop();
                 break;
 
             case AnimState.STATE_ATTACKING:
-                this.playAnim(LPCAnims.thrust);
+                this.playAnim(LPCAnims.slash, true);
                 break;
 
             default: throw new Error('Invalid Anim State!');
         }
     }
 
-    playAnim(name: LPCAnims, ignoreIfPlaying = true)
-    {
-        this.sprite.play(`${this.textureName}_${name}_${this.animParameters.direction}`, ignoreIfPlaying);
+    playAnim(name: LPCAnims, ignoreIfPlaying = true) {
+        let fullName = `${this.textureName}_${name}_${this.animParameters.direction}`;
+
+        console.log(fullName);
+
+        this.sprite.play(fullName, ignoreIfPlaying);
+        return fullName;
     }
 }
 
@@ -206,10 +242,14 @@ class BootScene extends Phaser.Scene {
         this.load.spritesheet('player', 'assets/RPG_assets.png', { frameWidth: 16, frameHeight: 16 });
 
         // Load the image twice: once for regular anims and second for oversize
+
         // Anims are in 64x64 boxes with 24 boxes per row
         this.load.spritesheet('wizard', 'assets/LPC_black_wizard_m.png', { frameWidth: 64, frameHeight: 64 });
-        // Oversize anims start on frame 168
+        this.load.spritesheet('kirito', 'assets/kirito_new.png', { frameWidth: 64, frameHeight: 64 });
+
+        // Oversize anims start on frame 56 (total size is 8x11 grid)
         this.load.spritesheet('wizard_oversize', 'assets/LPC_black_wizard_m.png', { frameWidth: 64 * 3, frameHeight: 64 * 3 });
+        this.load.spritesheet('kirito_oversize', 'assets/kirito_new.png', { frameWidth: 64 *3, frameHeight: 64 *3 });
 	};
 
 	create() {
@@ -242,7 +282,7 @@ class WorldScene extends Phaser.Scene {
 
         Input.cursors = this.input.keyboard.createCursorKeys();
         Input.keyboard = this.input.keyboard;
-        Input.attackKey = Input.keyboard.addKey('SPACE', true);
+        Input.attackKey = Input.keyboard.addKey('SPACE', true, false);
 	}
 
     createMap()
@@ -257,7 +297,7 @@ class WorldScene extends Phaser.Scene {
 
     createPlayer()
     {
-        this.player = new Player(this.physics.add.sprite(50, 100, 'wizard', 0), 'wizard');
+        this.player = new Player(this.physics.add.sprite(50, 100, 'kirto', 0), 'kirito', LPCAnims.slash);
 
 
         this.physics.world.bounds.width = this.map.widthInPixels;
