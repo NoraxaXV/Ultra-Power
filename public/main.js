@@ -6,6 +6,94 @@ class Input {
         throw new TypeError('Input is a static class and cannot be instatianted.');
     }
 }
+var LPCAnim;
+(function (LPCAnim) {
+    LPCAnim["spell_cast"] = "spell_cast";
+    LPCAnim["thrust"] = "thrust";
+    LPCAnim["walk"] = "walk";
+    LPCAnim["slash"] = "slash";
+    LPCAnim["shoot"] = "shoot";
+    LPCAnim["none"] = "none";
+})(LPCAnim || (LPCAnim = {}));
+class AnimData {
+}
+var loadedSprites = [];
+class LPCSprite {
+    // Instance
+    constructor(name, fileUrl) {
+        this.name = name;
+        this.fileUrl = fileUrl;
+        this.oversizeAnim = null;
+    }
+    static load(load, spriteToLoad) {
+        // Load the image twice: once for regular anims and second for oversize
+        // Anims are in 64x64 boxes with 24 boxes per row
+        load.spritesheet(spriteToLoad.name, spriteToLoad.fileUrl, { frameHeight: 64, frameWidth: 64 });
+        if (spriteToLoad.oversizeAnim != null) {
+            // Oversize anims start on frame 56 (total size is 8x11 grid)
+            load.spritesheet(spriteToLoad.name + '_oversize', spriteToLoad.fileUrl, { frameHeight: 64 * 3, frameWidth: 64 * 3, startFrame: 56 });
+        }
+        this.loadedSprites.push(spriteToLoad);
+    }
+    static createAnimationDatabase() {
+        this.loadedSprites.forEach((sprite) => {
+            let listOfAnims = this.animData;
+            let oversizeName = sprite.oversizeAnim;
+            let textureName = sprite.name;
+            // This is to account for the blank spots since not all anims take up a full row
+            let maxRowSize = (oversizeName != null) ? 24 : 13;
+            let directions = ["up", "left", "down", "right"];
+            let lastIndex = 0;
+            let lastOversizeIndex = 56;
+            for (let i = 0; i < listOfAnims.length; i++) {
+                let currAnim = listOfAnims[i];
+                let isOversize = currAnim.name === oversizeName;
+                // Go through each of the four directions
+                for (let d = 0; d < 4; d++) {
+                    let reel = [];
+                    let loadName = textureName;
+                    if (!isOversize) {
+                        // Handles regular anims
+                        for (let r = lastIndex; r < lastIndex + maxRowSize; r++) {
+                            if (r < currAnim.numOfFrames + lastIndex) {
+                                reel.push(r);
+                            }
+                        }
+                    }
+                    else {
+                        // Handle oversize anims
+                        loadName = textureName + '_oversize';
+                        // Handles special oversize anims
+                        for (let r = lastOversizeIndex; r < lastOversizeIndex + currAnim.numOfFrames; r++) {
+                            reel.push(r);
+                        }
+                        lastOversizeIndex += 8;
+                    }
+                    // console.log(`${ textureName }_${ currAnim.name }_${directions[d]} = ${reel}`);
+                    // Anims are set using the following pattern: name_animation_direction (eg: wizard_walk_up)
+                    // console.log(`creating ${textureName}_${currAnim.name}_${directions[d]} with anim reel ${reel} and textureName ${loadName}`);
+                    let anim = game.anims.create({ key: `${textureName}_${currAnim.name}_${directions[d]}`, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName });
+                    this.animCache.push(anim);
+                    if (anim == false) {
+                        throw new Error(`Create anim failed, invalid key! animKey = ${textureName}_${currAnim.name}_${directions[d]}`);
+                    }
+                    // Always increment even if we loaded oversize to ignore gaps
+                    lastIndex += maxRowSize;
+                }
+            }
+        });
+    }
+}
+// Static funcions and properties
+LPCSprite.loadedSprites = [];
+LPCSprite.animData = [
+    { name: LPCAnim.spell_cast, numOfFrames: 7, loop: 1 },
+    { name: LPCAnim.thrust, numOfFrames: 8, loop: 1 },
+    { name: LPCAnim.walk, numOfFrames: 9, loop: -1 },
+    { name: LPCAnim.slash, numOfFrames: 6, loop: 1 },
+    { name: LPCAnim.shoot, numOfFrames: 13, loop: 1 },
+];
+LPCSprite.animCache = [];
 // Current State of the player's animation
 var AnimState;
 (function (AnimState) {
@@ -20,81 +108,21 @@ var Directions;
     Directions["Left"] = "left";
     Directions["Right"] = "right";
 })(Directions || (Directions = {}));
-var LPCAnims;
-(function (LPCAnims) {
-    LPCAnims["spell_cast"] = "spell_cast";
-    LPCAnims["thrust"] = "thrust";
-    LPCAnims["walk"] = "walk";
-    LPCAnims["slash"] = "slash";
-    LPCAnims["shoot"] = "shoot";
-})(LPCAnims || (LPCAnims = {}));
 class Player {
-    constructor(sprite, textureName, oversizeName = null) {
+    constructor(sprite, attackAnim) {
         this.sprite = sprite;
-        this.textureName = textureName;
+        this.attackAnim = attackAnim;
         this.animState = AnimState.STATE_WALKING;
         this.animParameters = {
             direction: Directions.Down
         };
         this.attackRate = 1;
         this.speed = 8;
-        this.createLpcAnimDatabase(textureName, [
-            { name: LPCAnims.spell_cast, numOfFrames: 7, loop: 1 },
-            { name: LPCAnims.thrust, numOfFrames: 8, loop: 1 },
-            { name: LPCAnims.walk, numOfFrames: 9, loop: -1 },
-            { name: LPCAnims.slash, numOfFrames: 6, loop: 1 },
-            { name: LPCAnims.shoot, numOfFrames: 13, loop: 1 },
-        ], oversizeName);
-    }
-    // Create a database of animations for our sprite
-    createLpcAnimDatabase(textureName, listOfAnims, oversizeName = null) {
-        // This is to account for the blank spots since not all anims take up a full row
-        var maxRowSize = 24;
-        var directions = ["up", "left", "down", "right"];
-        var lastIndex = 0;
-        var lastOversizeIndex = 56;
-        for (let i = 0; i < listOfAnims.length; i++) {
-            let currAnim = listOfAnims[i];
-            let isOversize = currAnim.name === oversizeName;
-            // Go through each of the four directions
-            for (let d = 0; d < 4; d++) {
-                let reel = [];
-                if (!isOversize) {
-                    // Handles regular anims
-                    for (let r = lastIndex; r < lastIndex + maxRowSize; r++) {
-                        if (r < currAnim.numOfFrames + lastIndex) {
-                            reel.push(r);
-                        }
-                    }
-                    // console.log(`${ textureName }_${ currAnim.name }_${directions[d]} = ${reel}`);
-                    // Anims are set using the following pattern: name_animation_direction (eg: wizard_walk_up)
-                    if (!game.anims.create({ key: `${textureName}_${currAnim.name}_${directions[d]}`, frames: game.anims.generateFrameNumbers(textureName, { frames: reel }), repeat: currAnim.loop })) {
-                        throw new Error(`Create anim failed, invalid key! animKey = ${textureName}_${currAnim.name}_${directions[d]}`);
-                    }
-                }
-                else {
-                    // Handles special oversize anims
-                    for (let r = lastOversizeIndex; r < lastOversizeIndex + 8; r++) {
-                        reel.push(r);
-                    }
-                    lastOversizeIndex += 8;
-                    let animKey = `${textureName}_${currAnim.name}_${directions[d]}`;
-                    let loadName = textureName + '_oversize';
-                    console.log(`creating oversize ${animKey} with anim reel ${reel} and textureName ${loadName}`);
-                    // Handle oversize anims
-                    if (!game.anims.create({ key: animKey, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName })) {
-                        throw new Error(`Create anim failed, invalid key! animKey = ${textureName}_${currAnim.name}_${directions[d]}`);
-                    }
-                }
-                // Always increment even if we loaded oversize to ignore gaps
-                lastIndex += maxRowSize;
-            }
-        }
+        this.textureName = sprite.texture.key;
     }
     update(time, delta) {
-        this.getNextAnimatorState();
-        this.animate();
-        this.move(delta);
+        this.getNextState();
+        this.updateState(delta);
     }
     move(delta) {
         this.sprite.setVelocity(0, 0);
@@ -118,7 +146,7 @@ class Player {
         }
     }
     // updates the animator state machine
-    getNextAnimatorState() {
+    getNextState() {
         switch (this.animState) {
             case AnimState.STATE_WALKING:
                 if (Input.keyboard.checkDown(Input.attackKey, this.attackRate * 1000)) {
@@ -133,23 +161,23 @@ class Player {
         }
     }
     // Updates the player's animation based on his animation state
-    animate() {
+    updateState(delta) {
         switch (this.animState) {
             case AnimState.STATE_WALKING:
+                this.move(delta);
                 if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
-                    this.playAnim(LPCAnims.walk, true);
+                    this.playAnim(LPCAnim.walk, true);
                 else
                     this.sprite.anims.stop();
                 break;
             case AnimState.STATE_ATTACKING:
-                this.playAnim(LPCAnims.slash, true);
+                this.playAnim(this.attackAnim, true);
                 break;
             default: throw new Error('Invalid Anim State!');
         }
     }
     playAnim(name, ignoreIfPlaying = true) {
         let fullName = `${this.textureName}_${name}_${this.animParameters.direction}`;
-        console.log(fullName);
         this.sprite.play(fullName, ignoreIfPlaying);
         return fullName;
     }
@@ -169,18 +197,13 @@ class BootScene extends Phaser.Scene {
         this.load.image('tiles', 'assets/map/spritesheet.png');
         // map in json format
         this.load.tilemapTiledJSON('map', 'assets/map/map.json');
-        // our two characters
-        this.load.spritesheet('player', 'assets/RPG_assets.png', { frameWidth: 16, frameHeight: 16 });
-        // Load the image twice: once for regular anims and second for oversize
-        // Anims are in 64x64 boxes with 24 boxes per row
-        this.load.spritesheet('wizard', 'assets/LPC_black_wizard_m.png', { frameWidth: 64, frameHeight: 64 });
-        this.load.spritesheet('kirito', 'assets/kirito_new.png', { frameWidth: 64, frameHeight: 64 });
-        // Oversize anims start on frame 56 (total size is 8x11 grid)
-        this.load.spritesheet('wizard_oversize', 'assets/LPC_black_wizard_m.png', { frameWidth: 64 * 3, frameHeight: 64 * 3 });
-        this.load.spritesheet('kirito_oversize', 'assets/kirito_new.png', { frameWidth: 64 * 3, frameHeight: 64 * 3 });
+        LPCSprite.load(this.load, { name: 'fighter', fileUrl: 'assets/fighter.png', oversizeAnim: LPCAnim.slash });
+        LPCSprite.load(this.load, { name: 'wizard', fileUrl: 'assets/LPC_black_wizard_m.png', oversizeAnim: LPCAnim.thrust });
+        LPCSprite.load(this.load, { name: 'archer', fileUrl: 'assets/archer.png' });
     }
     ;
     create() {
+        LPCSprite.createAnimationDatabase();
         this.scene.start('WorldScene');
     }
     ;
@@ -207,7 +230,7 @@ class WorldScene extends Phaser.Scene {
         this.obstacles.setCollisionByExclusion([-1]);
     }
     createPlayer() {
-        this.player = new Player(this.physics.add.sprite(50, 100, 'kirto', 0), 'kirito', LPCAnims.slash);
+        this.player = new Player(this.physics.add.sprite(50, 100, 'archer', 0), LPCAnim.shoot);
         this.physics.world.bounds.width = this.map.widthInPixels;
         this.physics.world.bounds.height = this.map.heightInPixels;
         this.player.sprite.setCollideWorldBounds(true);
@@ -222,8 +245,10 @@ var config = {
     parent: 'content',
     width: 640,
     height: 480,
-    zoom: 1,
-    pixelArt: true,
+    zoom: 1.5,
+    render: {
+        pixelArt: true
+    },
     physics: {
         default: 'arcade',
         arcade: {
