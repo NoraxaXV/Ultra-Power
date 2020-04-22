@@ -1,5 +1,4 @@
 "use strict";
-console.log("hello!");
 // Global Static class to keep track of input
 class Input {
     constructor() {
@@ -17,7 +16,6 @@ var LPCAnim;
 })(LPCAnim || (LPCAnim = {}));
 class AnimData {
 }
-var loadedSprites = [];
 class LPCSprite {
     // Instance
     constructor(name, fileUrl) {
@@ -94,12 +92,12 @@ LPCSprite.animData = [
     { name: LPCAnim.shoot, numOfFrames: 13, loop: 1 },
 ];
 LPCSprite.animCache = [];
-// Current State of the player's animation
-var AnimState;
-(function (AnimState) {
-    AnimState[AnimState["STATE_WALKING"] = 0] = "STATE_WALKING";
-    AnimState[AnimState["STATE_ATTACKING"] = 1] = "STATE_ATTACKING";
-})(AnimState || (AnimState = {}));
+// All states shared by all entities
+var States;
+(function (States) {
+    States[States["STATE_WALKING"] = 0] = "STATE_WALKING";
+    States[States["STATE_ATTACKING"] = 1] = "STATE_ATTACKING";
+})(States || (States = {}));
 ;
 var Directions;
 (function (Directions) {
@@ -108,78 +106,137 @@ var Directions;
     Directions["Left"] = "left";
     Directions["Right"] = "right";
 })(Directions || (Directions = {}));
-class Player {
-    constructor(sprite, attackAnim) {
+// An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
+class Entity {
+    constructor(sprite, speed = 1) {
         this.sprite = sprite;
-        this.attackAnim = attackAnim;
-        this.animState = AnimState.STATE_WALKING;
-        this.animParameters = {
+        this.speed = speed;
+        this.state = States.STATE_WALKING;
+        this.stateData = {
             direction: Directions.Down
         };
-        this.attackRate = 1;
-        this.speed = 8;
         this.textureName = sprite.texture.key;
+        Entity.entities.push(this);
     }
-    update(time, delta) {
+    static updateAllEntities(timeStamp, delta) {
+        var ts = timeStamp;
+        var d = delta;
+        this.entities.forEach((entity) => { entity.update(ts, d); });
+    }
+    playAnim(name, ignoreIfPlaying = true) {
+        let fullName = `${this.textureName}_${name}_${this.stateData.direction}`;
+        this.sprite.play(fullName, ignoreIfPlaying);
+        return fullName;
+    }
+    move(direction, delta) {
+        let movement = direction.normalize().scale(delta * this.speed);
+        this.sprite.setVelocity(movement.x, movement.y);
+        this.updateDirection();
+    }
+    // Updates the currently facing animation direction
+    updateDirection() {
+        let currentVelocity = this.sprite.body.velocity;
+        let angle = currentVelocity.angle() * (180 / Math.PI);
+        if (angle < 90) {
+            this.stateData.direction = Directions.Right;
+        }
+        else if (angle < 180) {
+            this.stateData.direction = Directions.Down;
+        }
+        else if (angle < 270) {
+            this.stateData.direction = Directions.Left;
+        }
+        else {
+            this.stateData.direction = Directions.Up;
+        }
+        return this.stateData.direction;
+    }
+    update(timeStamp, delta) {
         this.getNextState();
         this.updateState(delta);
     }
-    move(delta) {
-        this.sprite.setVelocity(0, 0);
-        // Horizontal Movement
-        if (Input.cursors.left.isDown) {
-            this.sprite.setVelocityX(-this.speed * delta);
-            this.animParameters.direction = Directions.Left;
-        }
-        else if (Input.cursors.right.isDown) {
-            this.sprite.setVelocityX(this.speed * delta);
-            this.animParameters.direction = Directions.Right;
-        }
-        // Vertical Movement
-        if (Input.cursors.up.isDown) {
-            this.sprite.setVelocityY(-this.speed * delta);
-            this.animParameters.direction = Directions.Up;
-        }
-        else if (Input.cursors.down.isDown) {
-            this.sprite.setVelocityY(this.speed * delta);
-            this.animParameters.direction = Directions.Down;
-        }
+    ;
+}
+Entity.entities = [];
+// Global player
+let player;
+class Player extends Entity {
+    constructor(sprite, attackAnim, speed = 1) {
+        super(sprite, speed);
+        this.attackAnim = attackAnim;
+        this.attackRate = 1;
     }
-    // updates the animator state machine
+    // Checks for changes to the state
     getNextState() {
-        switch (this.animState) {
-            case AnimState.STATE_WALKING:
+        switch (this.state) {
+            case States.STATE_WALKING:
                 if (Input.keyboard.checkDown(Input.attackKey, this.attackRate * 1000)) {
-                    this.animState = AnimState.STATE_ATTACKING;
+                    this.state = States.STATE_ATTACKING;
                 }
                 break;
-            case AnimState.STATE_ATTACKING:
+            case States.STATE_ATTACKING:
                 if (this.sprite.anims.getProgress() >= 1) {
-                    this.animState = AnimState.STATE_WALKING;
+                    this.state = States.STATE_WALKING;
                 }
                 break;
+            default: throw new Error(`State ${this.state} not implemented!`);
         }
+        return this.state;
     }
     // Updates the player's animation based on his animation state
     updateState(delta) {
-        switch (this.animState) {
-            case AnimState.STATE_WALKING:
-                this.move(delta);
+        switch (this.state) {
+            case States.STATE_WALKING:
+                let movement = new Phaser.Math.Vector2(0, 0);
+                // Horizontal movement
+                if (Input.cursors.left.isDown) {
+                    movement.x = -1;
+                }
+                else if (Input.cursors.right.isDown) {
+                    movement.x = 1;
+                }
+                // Vertical Movement
+                if (Input.cursors.up.isDown) {
+                    movement.y = -1;
+                }
+                else if (Input.cursors.down.isDown) {
+                    movement.y = 1;
+                }
+                this.move(movement, delta);
                 if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
                 else
                     this.sprite.anims.stop();
                 break;
-            case AnimState.STATE_ATTACKING:
+            case States.STATE_ATTACKING:
                 this.playAnim(this.attackAnim, true);
                 break;
-            default: throw new Error('Invalid Anim State!');
+            default: throw new Error(`State ${this.state} not implemented!`);
         }
     }
-    playAnim(name, ignoreIfPlaying = true) {
-        let fullName = `${this.textureName}_${name}_${this.animParameters.direction}`;
-        this.sprite.play(fullName, ignoreIfPlaying);
-        return fullName;
+}
+class Monster extends Entity {
+    constructor(sprite, speed = 1) {
+        super(sprite, speed);
+    }
+    getNextState() {
+        switch (this.state) {
+            case States.STATE_WALKING:
+                break;
+            default: throw new Error(`State ${this.state} not implemented!`);
+        }
+        return this.state;
+    }
+    updateState(delta) {
+        switch (this.state) {
+            case States.STATE_WALKING:
+                let toPlayer = player.sprite.getCenter().subtract(this.sprite.getCenter());
+                this.move(toPlayer, delta);
+                if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
+                    this.playAnim(LPCAnim.walk, true);
+                break;
+            default: throw new Error(`State ${this.state} not implemented!`);
+        }
     }
 }
 class TileMap {
@@ -200,6 +257,7 @@ class BootScene extends Phaser.Scene {
         LPCSprite.load(this.load, { name: 'fighter', fileUrl: 'assets/fighter.png', oversizeAnim: LPCAnim.slash });
         LPCSprite.load(this.load, { name: 'wizard', fileUrl: 'assets/LPC_black_wizard_m.png', oversizeAnim: LPCAnim.thrust });
         LPCSprite.load(this.load, { name: 'archer', fileUrl: 'assets/archer.png' });
+        LPCSprite.load(this.load, { name: 'skeleton', fileUrl: 'assets/skeleton.png' });
     }
     ;
     create() {
@@ -230,13 +288,15 @@ class WorldScene extends Phaser.Scene {
         this.obstacles.setCollisionByExclusion([-1]);
     }
     createPlayer() {
-        this.player = new Player(this.physics.add.sprite(50, 100, 'archer', 0), LPCAnim.shoot);
+        this.player = new Player(this.physics.add.sprite(50, 100, 'fighter', 0), LPCAnim.slash, 8);
+        player = this.player;
+        let skelly = new Monster(this.physics.add.sprite(50, 100, 'skeleton', 0), 4);
         this.physics.world.bounds.width = this.map.widthInPixels;
         this.physics.world.bounds.height = this.map.heightInPixels;
         this.player.sprite.setCollideWorldBounds(true);
     }
-    update(time, delta) {
-        this.player.update(time, delta);
+    update(timeStamp, deltaInMs) {
+        Entity.updateAllEntities(timeStamp, deltaInMs);
     }
 }
 ;

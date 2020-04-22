@@ -1,7 +1,4 @@
-﻿console.log("hello!");
-
-
-// Global Static class to keep track of input
+﻿// Global Static class to keep track of input
 class Input {
     static keyboard: Phaser.Input.Keyboard.KeyboardPlugin;
     static cursors: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -11,8 +8,6 @@ class Input {
     {
         throw new TypeError('Input is a static class and cannot be instatianted.');
     }
-
-
 }
 
 
@@ -29,14 +24,12 @@ enum LPCAnim
 
 class AnimData
 {
-    
     name: LPCAnim
     numOfFrames: number
     loop?: number;
     hasOverize?: boolean;
 }
 
-var loadedSprites: LPCSprite[] = [];
 
 class LPCSprite {
 
@@ -51,7 +44,8 @@ class LPCSprite {
         { name: LPCAnim.shoot, numOfFrames: 13, loop: 1 },
     ]
 
-    static load(load: Phaser.Loader.LoaderPlugin, spriteToLoad: LPCSprite) {
+    static load(load: Phaser.Loader.LoaderPlugin, spriteToLoad: LPCSprite): void
+    {
 
         // Load the image twice: once for regular anims and second for oversize
 
@@ -69,7 +63,7 @@ class LPCSprite {
 
     static animCache: (false | Phaser.Animations.Animation)[]  = [];
 
-    static createAnimationDatabase()
+    static createAnimationDatabase(): void
     {
         this.loadedSprites.forEach((sprite: LPCSprite) => {
             let listOfAnims = this.animData;
@@ -137,8 +131,8 @@ class LPCSprite {
     oversizeAnim?: LPCAnim = null
 }
 
-// Current State of the player's animation
-enum AnimState {
+// All states shared by all entities
+enum States {
     STATE_WALKING,
     STATE_ATTACKING
 };
@@ -150,102 +144,182 @@ enum Directions {
     Right = 'right'
 }
 
-class Player
+// An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
+abstract class Entity
 {
-    animState: AnimState = AnimState.STATE_WALKING;
-    animParameters = {
-        direction: Directions.Down
-    };
-
-    attackRate = 1;
-    speed = 8;
-    textureName: string;
-
-    constructor(public sprite: Phaser.Physics.Arcade.Sprite, public attackAnim: LPCAnim)
+    static entities: Entity[] = [];
+    static updateAllEntities(timeStamp: number, delta: number): void
+    {
+        var ts = timeStamp;
+        var d = delta;
+        this.entities.forEach((entity) => { entity.update(ts, d) });
+    }
+    constructor(public sprite: Phaser.Physics.Arcade.Sprite, public speed: number = 1)
     {
         this.textureName = sprite.texture.key;
+        Entity.entities.push(this);
     }
-    
 
-    update(time: number, delta: number)
+    state: States = States.STATE_WALKING;
+    stateData =  {
+        direction: Directions.Down
+    }
+
+    protected textureName: string;
+    protected playAnim(name: LPCAnim, ignoreIfPlaying = true): string
+    {
+        let fullName = `${this.textureName}_${name}_${this.stateData.direction}`;
+        this.sprite.play(fullName, ignoreIfPlaying);
+        return fullName;
+    }
+
+    move(direction: Phaser.Math.Vector2, delta: number): void
+    {
+        let movement = direction.normalize().scale(delta * this.speed);
+        this.sprite.setVelocity(movement.x, movement.y);
+        this.updateDirection();
+    }
+
+    // Updates the currently facing animation direction
+    private updateDirection(): Directions
+    {
+        let currentVelocity = this.sprite.body.velocity;
+        let angle = currentVelocity.angle() * (180 / Math.PI);
+
+        if (angle < 90) {
+            this.stateData.direction = Directions.Right;
+        } else if (angle < 180) {
+            this.stateData.direction = Directions.Down;
+        } else if (angle < 270)
+        {
+            this.stateData.direction = Directions.Left;
+        } else {
+            this.stateData.direction = Directions.Up;
+        }
+
+        return this.stateData.direction;
+    }
+
+    abstract getNextState(): States;
+    abstract updateState(delta: number): void;
+
+    update(timeStamp: number, delta: number): void
     {
         this.getNextState();
         this.updateState(delta);
+    };
+
+    
+}
+// Global player
+let player: Player;
+
+class Player extends Entity
+{
+    stateData:{ direction: Directions; };
+    constructor(sprite: Phaser.Physics.Arcade.Sprite, public attackAnim: LPCAnim, speed: number = 1)
+    {
+        super(sprite, speed);
     }
 
-    move(delta: number)
+    attackRate = 1;
+
+    // Checks for changes to the state
+    getNextState(): States
     {
-        this.sprite.setVelocity(0, 0);
-
-        // Horizontal Movement
-        if (Input.cursors.left.isDown) {
-            this.sprite.setVelocityX(-this.speed * delta);
-            this.animParameters.direction = Directions.Left;
-        } else if (Input.cursors.right.isDown) {
-            this.sprite.setVelocityX(this.speed * delta);
-            this.animParameters.direction = Directions.Right;
-        }
-
-        // Vertical Movement
-        if (Input.cursors.up.isDown) {
-            this.sprite.setVelocityY(-this.speed * delta);
-            this.animParameters.direction = Directions.Up;
-        } else if (Input.cursors.down.isDown) {
-            this.sprite.setVelocityY(this.speed * delta);
-            this.animParameters.direction = Directions.Down;
-        }
-    }
-
-    // updates the animator state machine
-    getNextState()
-    {
-        switch (this.animState)
+        switch (this.state)
         {
-            case AnimState.STATE_WALKING:
+            case States.STATE_WALKING:
                 if (Input.keyboard.checkDown(Input.attackKey, this.attackRate * 1000))
                 {
-                    this.animState = AnimState.STATE_ATTACKING;
+                    this.state = States.STATE_ATTACKING;
                 }
                 break;
-            case AnimState.STATE_ATTACKING:
+            case States.STATE_ATTACKING:
                 if (this.sprite.anims.getProgress() >= 1)
                 {
-                    this.animState = AnimState.STATE_WALKING;
+                    this.state = States.STATE_WALKING;
                 }
                 break;
+            default: throw new Error(`State ${this.state} not implemented!`);
+
         }
-        
+        return this.state;
     }
 
     // Updates the player's animation based on his animation state
-    updateState(delta: number)
+    updateState(delta: number): void
     {
-        switch (this.animState) {
+        switch (this.state) {
+            case States.STATE_WALKING:
+                let movement = new Phaser.Math.Vector2(0, 0);
 
-            case AnimState.STATE_WALKING:
-                this.move(delta);
+                // Horizontal movement
+                if (Input.cursors.left.isDown) {
+                    movement.x = -1;
+                } else if (Input.cursors.right.isDown) {
+                    movement.x = 1;
+                }
+                // Vertical Movement
+                if (Input.cursors.up.isDown) {
+                    movement.y = -1;
+                } else if (Input.cursors.down.isDown) {
+                    movement.y = 1;
+                }
+
+                this.move(movement, delta);
 
                 if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
                 else
                     this.sprite.anims.stop();
+
                 break;
 
-            case AnimState.STATE_ATTACKING:
+            case States.STATE_ATTACKING:
                 this.playAnim(this.attackAnim, true);
+
                 break;
 
-            default: throw new Error('Invalid Anim State!');
+            default: throw new Error(`State ${this.state} not implemented!`);
         }
-    }
-
-    playAnim(name: LPCAnim, ignoreIfPlaying = true) {
-        let fullName = `${this.textureName}_${name}_${this.animParameters.direction}`;
-        this.sprite.play(fullName, ignoreIfPlaying);
-        return fullName;
     }
 }
 
+class Monster extends Entity
+{
+    constructor(sprite: Phaser.Physics.Arcade.Sprite, speed: number = 1)
+    {
+        super(sprite, speed);
+    }
+
+    
+    getNextState(): States
+    {
+        switch (this.state)
+        {
+            case States.STATE_WALKING:
+                break;
+            default: throw new Error(`State ${this.state} not implemented!`);
+        }
+        return this.state;
+    }
+
+    updateState(delta: number): void
+    {
+        switch (this.state) {
+            case States.STATE_WALKING:
+                let toPlayer = player.sprite.getCenter().subtract(this.sprite.getCenter());
+                this.move(toPlayer, delta);
+
+                if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
+                    this.playAnim(LPCAnim.walk, true);
+
+                break;
+            default: throw new Error(`State ${this.state} not implemented!`);
+        }
+    }
+}
 class TileMap
 {
     map: Phaser.Tilemaps.Tilemap;
@@ -276,6 +350,7 @@ class BootScene extends Phaser.Scene {
         LPCSprite.load(this.load, { name: 'fighter', fileUrl: 'assets/fighter.png', oversizeAnim: LPCAnim.slash });
         LPCSprite.load(this.load, { name: 'wizard', fileUrl: 'assets/LPC_black_wizard_m.png', oversizeAnim: LPCAnim.thrust });
         LPCSprite.load(this.load, { name: 'archer', fileUrl: 'assets/archer.png' });
+        LPCSprite.load(this.load, { name: 'skeleton', fileUrl: 'assets/skeleton.png' });
 	};
 
     create() {
@@ -322,9 +397,10 @@ class WorldScene extends Phaser.Scene {
 
     createPlayer()
     {
-        this.player = new Player(this.physics.add.sprite(50, 100, 'archer', 0), LPCAnim.shoot);
+        this.player = new Player(this.physics.add.sprite(50, 100, 'fighter', 0), LPCAnim.slash, 8);
+        player = this.player;
 
-
+        let skelly = new Monster(this.physics.add.sprite(50, 100, 'skeleton', 0), 4);
         this.physics.world.bounds.width = this.map.widthInPixels;
         this.physics.world.bounds.height = this.map.heightInPixels;
 
@@ -333,9 +409,9 @@ class WorldScene extends Phaser.Scene {
 	}
 
     
-    update(time: number, delta: number)
+    update(timeStamp: number, deltaInMs: number)
     {
-        this.player.update(time, delta);
+        Entity.updateAllEntities(timeStamp, deltaInMs);
 	}
 };
 
