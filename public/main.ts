@@ -184,17 +184,22 @@ abstract class Entity
     private updateDirection(): Directions
     {
         let currentVelocity = this.sprite.body.velocity;
+        if (currentVelocity.x == 0 && currentVelocity.y == 0)
+        {
+            return this.stateData.direction;
+        }
         let angle = currentVelocity.angle() * (180 / Math.PI);
 
-        if (angle < 90) {
+        if (angle <= 45 || angle >= 315) {
             this.stateData.direction = Directions.Right;
-        } else if (angle < 180) {
+        } else if (angle > 45 && angle < 135) {
             this.stateData.direction = Directions.Down;
-        } else if (angle < 270)
-        {
+        } else if (angle >= 135 && angle <= 225) {
             this.stateData.direction = Directions.Left;
-        } else {
+        } else if (angle > 225 && angle < 315) {
             this.stateData.direction = Directions.Up;
+        } else {
+            console.log(`${this.textureName}: angle=${angle}`);
         }
 
         return this.stateData.direction;
