@@ -24,10 +24,11 @@ enum LPCAnim
 
 class AnimData
 {
-    name: LPCAnim
-    numOfFrames: number
-    loop?: number;
-    hasOverize?: boolean;
+    name: LPCAnim;
+    numOfFrames: number;
+    loop?: number = -1;
+    duration?: number = -1;
+    frameRate?: number = 24;
 }
 
 
@@ -38,10 +39,10 @@ class LPCSprite {
 
     static animData: AnimData[] = [
         { name: LPCAnim.spell_cast, numOfFrames: 7, loop: 1 },
-        { name: LPCAnim.thrust, numOfFrames: 8, loop: 1 },
-        { name: LPCAnim.walk, numOfFrames: 9, loop: -1 },
-        { name: LPCAnim.slash, numOfFrames: 6, loop: 1 },
-        { name: LPCAnim.shoot, numOfFrames: 13, loop: 1 },
+        { name: LPCAnim.thrust, numOfFrames: 8, loop: 1, frameRate: 24 },
+        { name: LPCAnim.walk, numOfFrames: 9, loop: -1, duration: 500 },
+        { name: LPCAnim.slash, numOfFrames: 6, loop: 1, frameRate: 24 },
+        { name: LPCAnim.shoot, numOfFrames: 13, loop: 1, frameRate: 24 },
     ]
 
     static load(load: Phaser.Loader.LoaderPlugin, spriteToLoad: LPCSprite): void
@@ -107,8 +108,9 @@ class LPCSprite {
                     // console.log(`${ textureName }_${ currAnim.name }_${directions[d]} = ${reel}`);
                     // Anims are set using the following pattern: name_animation_direction (eg: wizard_walk_up)
                     // console.log(`creating ${textureName}_${currAnim.name}_${directions[d]} with anim reel ${reel} and textureName ${loadName}`);
-
-                    let anim = game.anims.create({ key: `${textureName}_${currAnim.name}_${directions[d]}`, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName })
+                    let anim = game.anims.create({
+                        key: `${textureName}_${currAnim.name}_${directions[d]}`, frameRate: currAnim.frameRate, duration: currAnim.duration, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName
+                    })
                     this.animCache.push(anim);
                     if (anim == false) {
                         throw new Error(`Create anim failed, invalid key! animKey = ${textureName}_${currAnim.name}_${directions[d]}`);
@@ -133,8 +135,9 @@ class LPCSprite {
 
 // All states shared by all entities
 enum States {
-    STATE_WALKING,
-    STATE_ATTACKING
+    STATE_WALKING = 'walking',
+    STATE_ATTACKING ='attacking',
+    STATE_DOING_DAMAGE = 'doing damage',
 };
 
 enum Directions {
@@ -243,6 +246,13 @@ class Player extends Entity
             case States.STATE_ATTACKING:
                 if (this.sprite.anims.getProgress() >= 1)
                 {
+                    this.state = States.STATE_DOING_DAMAGE;
+                }
+                break;
+            case States.STATE_DOING_DAMAGE:
+                if (Input.keyboard.checkDown(Input.attackKey, this.attackRate * 1000)) {
+                    this.state = States.STATE_ATTACKING;
+                } else {
                     this.state = States.STATE_WALKING;
                 }
                 break;
@@ -278,14 +288,15 @@ class Player extends Entity
                     this.playAnim(LPCAnim.walk, true);
                 else
                     this.sprite.anims.stop();
-
                 break;
 
             case States.STATE_ATTACKING:
+                this.sprite.setVelocity(0, 0);
                 this.playAnim(this.attackAnim, true);
-
                 break;
-
+            case States.STATE_DOING_DAMAGE:
+                console.log('damage!');
+                break;
             default: throw new Error(`State ${this.state} not implemented!`);
         }
     }
@@ -293,17 +304,40 @@ class Player extends Entity
 
 class Monster extends Entity
 {
-    constructor(sprite: Phaser.Physics.Arcade.Sprite, speed: number = 1)
+    stateData = { direction: Directions.Down, distToPlayer: Number.POSITIVE_INFINITY }
+    constructor(sprite: Phaser.Physics.Arcade.Sprite, speed: number = 1, minDistToPlayer: number = 50)
     {
         super(sprite, speed);
+        this.minDistToPlayer = minDistToPlayer;
     }
 
+    private minDistToPlayer: number;
     
     getNextState(): States
     {
+        this.stateData.distToPlayer = player.sprite.getCenter().subtract(this.sprite.getCenter()).lengthSq();
         switch (this.state)
         {
             case States.STATE_WALKING:
+                
+                if (this.stateData.distToPlayer < this.minDistToPlayer * this.minDistToPlayer)
+                {
+                    this.state = States.STATE_ATTACKING;
+                }
+                break;
+            case States.STATE_ATTACKING:
+                if (this.stateData.distToPlayer > this.minDistToPlayer * this.minDistToPlayer) {
+                    this.state = States.STATE_WALKING;
+                } else if (this.sprite.anims.getProgress() >= 1) {
+                    this.state = States.STATE_DOING_DAMAGE;
+                }
+                break;
+            case States.STATE_DOING_DAMAGE:
+                if (this.stateData.distToPlayer < this.minDistToPlayer * this.minDistToPlayer) {
+                    this.state = States.STATE_ATTACKING;
+                } else {
+                    this.state = States.STATE_WALKING;
+                }
                 break;
             default: throw new Error(`State ${this.state} not implemented!`);
         }
@@ -319,8 +353,15 @@ class Monster extends Entity
 
                 if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
-
                 break;
+            case States.STATE_ATTACKING:
+                this.sprite.setVelocity(0, 0);
+                this.playAnim(LPCAnim.slash, true);
+                break;
+            case States.STATE_DOING_DAMAGE:
+                console.log('monster damage!');
+                break;
+
             default: throw new Error(`State ${this.state} not implemented!`);
         }
     }
@@ -405,7 +446,7 @@ class WorldScene extends Phaser.Scene {
         this.player = new Player(this.physics.add.sprite(50, 100, 'fighter', 0), LPCAnim.slash, 8);
         player = this.player;
 
-        let skelly = new Monster(this.physics.add.sprite(50, 100, 'skeleton', 0), 4);
+        let skelly = new Monster(this.physics.add.sprite(200, 200, 'skeleton', 0), 4);
         this.physics.world.bounds.width = this.map.widthInPixels;
         this.physics.world.bounds.height = this.map.heightInPixels;
 
@@ -421,13 +462,13 @@ class WorldScene extends Phaser.Scene {
 };
 
 var config: Phaser.Types.Core.GameConfig = {
-	type: Phaser.AUTO,
+    type: Phaser.AUTO,
 	parent: 'content',
 	width: 640,
 	height: 480,
     zoom: 1.5,
     render: {
-        pixelArt: true
+        pixelArt: true,
     },
     physics: {
 		default: 'arcade',
