@@ -17,8 +17,7 @@ var LPCAnim;
 class AnimData {
     constructor() {
         this.loop = -1;
-        this.duration = -1;
-        this.frameRate = 24;
+        this.duration = 500;
     }
 }
 class LPCSprite {
@@ -76,7 +75,7 @@ class LPCSprite {
                     // Anims are set using the following pattern: name_animation_direction (eg: wizard_walk_up)
                     // console.log(`creating ${textureName}_${currAnim.name}_${directions[d]} with anim reel ${reel} and textureName ${loadName}`);
                     let anim = game.anims.create({
-                        key: `${textureName}_${currAnim.name}_${directions[d]}`, frameRate: currAnim.frameRate, duration: currAnim.duration, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName
+                        key: `${textureName}_${currAnim.name}_${directions[d]}`, duration: currAnim.duration, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName
                     });
                     this.animCache.push(anim);
                     if (anim == false) {
@@ -92,11 +91,11 @@ class LPCSprite {
 // Static funcions and properties
 LPCSprite.loadedSprites = [];
 LPCSprite.animData = [
-    { name: LPCAnim.spell_cast, numOfFrames: 7, loop: 1 },
-    { name: LPCAnim.thrust, numOfFrames: 8, loop: 1, frameRate: 24 },
+    { name: LPCAnim.spell_cast, numOfFrames: 7, loop: 1, duration: 500 },
+    { name: LPCAnim.thrust, numOfFrames: 8, loop: 1, duration: 500 },
     { name: LPCAnim.walk, numOfFrames: 9, loop: -1, duration: 500 },
-    { name: LPCAnim.slash, numOfFrames: 6, loop: 1, frameRate: 24 },
-    { name: LPCAnim.shoot, numOfFrames: 13, loop: 1, frameRate: 24 },
+    { name: LPCAnim.slash, numOfFrames: 6, loop: 1, duration: 500 },
+    { name: LPCAnim.shoot, numOfFrames: 13, loop: 1, duration: 500 },
 ];
 LPCSprite.animCache = [];
 // All states shared by all entities
@@ -116,14 +115,18 @@ var Directions;
 })(Directions || (Directions = {}));
 // An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
 class Entity {
-    constructor(sprite, speed = 1) {
+    constructor(sprite, config) {
         this.sprite = sprite;
-        this.speed = speed;
         this.state = States.STATE_WALKING;
         this.stateData = {
             direction: Directions.Down
         };
-        this.textureName = sprite.texture.key;
+        this.textureName = this.sprite.texture.key;
+        this.health = (config.health) ? config.health : 100;
+        this.speed = (config.speed) ? config.speed : 1;
+        this.attackRange = (config.attackRange) ? config.attackRange : 10;
+        this.attackFOV = (config.attackRange) ? config.attackRange : 90;
+        this.dump();
         Entity.entities.push(this);
     }
     static updateAllEntities(timeStamp, delta) {
@@ -136,10 +139,30 @@ class Entity {
         this.sprite.play(fullName, ignoreIfPlaying);
         return fullName;
     }
+    checkForCollision(gameScene, objects) {
+        objects.getChildren().forEach((object) => {
+        });
+    }
     move(direction, delta) {
         let movement = direction.normalize().scale(delta * this.speed);
-        this.sprite.setVelocity(movement.x, movement.y);
+        this.sprite.body;
         this.updateDirection();
+    }
+    takeDamage(amount) {
+    }
+    dump() {
+        let stateData = '';
+        for (var prop in this.stateData) {
+            '       ' + prop + ' : ' + this.stateData[prop] + '\n';
+        }
+        console.log(`${this.textureName}: 
+    Health: ${this.health}
+    Speed: ${this.speed}
+    Attack Range: ${this.attackRange}
+    Attack FOV: ${this.attackFOV}
+    Anim State: ${this.state}
+    State Data: ${stateData}
+`);
     }
     // Updates the currently facing animation direction
     updateDirection() {
@@ -175,10 +198,10 @@ Entity.entities = [];
 // Global player
 let player;
 class Player extends Entity {
-    constructor(sprite, attackAnim, speed = 1) {
-        super(sprite, speed);
-        this.attackAnim = attackAnim;
+    constructor(sprite, config) {
+        super(sprite, config);
         this.attackRate = 1;
+        this.attackAnim = config.attackAnim;
     }
     // Checks for changes to the state
     getNextState() {
@@ -235,17 +258,25 @@ class Player extends Entity {
                 this.playAnim(this.attackAnim, true);
                 break;
             case States.STATE_DOING_DAMAGE:
-                console.log('damage!');
+                Monster.all.forEach((monster) => {
+                    monster.takeDamage(1);
+                });
                 break;
             default: throw new Error(`State ${this.state} not implemented!`);
         }
     }
 }
 class Monster extends Entity {
-    constructor(sprite, speed = 1, minDistToPlayer = 50) {
-        super(sprite, speed);
+    constructor(sprite, config) {
+        super(sprite, config);
         this.stateData = { direction: Directions.Down, distToPlayer: Number.POSITIVE_INFINITY };
-        this.minDistToPlayer = minDistToPlayer;
+        this.minDistToPlayer = config.minDistToPlayer;
+        Monster.monsterGroup.add(this.sprite);
+        Monster.all.push(this);
+    }
+    takeDamage(amount) {
+        this.health -= amount;
+        console.log('Monster took damage! health = ' + this.health);
     }
     getNextState() {
         this.stateData.distToPlayer = player.sprite.getCenter().subtract(this.sprite.getCenter()).lengthSq();
@@ -294,6 +325,7 @@ class Monster extends Entity {
         }
     }
 }
+Monster.all = [];
 class TileMap {
     constructor(scene, config) {
         this.map = scene.make.tilemap(config);
@@ -331,6 +363,7 @@ class WorldScene extends Phaser.Scene {
     create() {
         this.createMap();
         this.createPlayer();
+        this.createMonsters();
         Input.cursors = this.input.keyboard.createCursorKeys();
         Input.keyboard = this.input.keyboard;
         Input.attackKey = Input.keyboard.addKey('SPACE', true, false);
@@ -341,14 +374,21 @@ class WorldScene extends Phaser.Scene {
         this.grass = this.map.createStaticLayer('Grass', tiles, 0, 0);
         this.obstacles = this.map.createStaticLayer('Obstacles', tiles, 0, 0);
         this.obstacles.setCollisionByExclusion([-1]);
-    }
-    createPlayer() {
-        this.player = new Player(this.physics.add.sprite(50, 100, 'fighter', 0), LPCAnim.slash, 8);
-        player = this.player;
-        let skelly = new Monster(this.physics.add.sprite(200, 200, 'skeleton', 0), 4);
         this.physics.world.bounds.width = this.map.widthInPixels;
         this.physics.world.bounds.height = this.map.heightInPixels;
+    }
+    createPlayer() {
+        this.player = new Player(this.physics.add.sprite(50, 100, 'fighter', 0), { speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
+        player = this.player;
         this.player.sprite.setCollideWorldBounds(true);
+    }
+    createMonsters() {
+        Monster.monsterGroup = new Phaser.Physics.Arcade.Group(this.physics.world, this);
+        let randPos = new Phaser.Math.Vector2();
+        for (var i = 0; i < 13; i++) {
+            randPos = Phaser.Math.RandomXY(randPos, 300);
+            new Monster(this.physics.add.sprite(randPos.x + 150, randPos.y + 150, 'skeleton', 0), { speed: Math.random() * 9 + 1, minDistToPlayer: 50, collideWorldBounds: true });
+        }
     }
     update(timeStamp, deltaInMs) {
         Entity.updateAllEntities(timeStamp, deltaInMs);
