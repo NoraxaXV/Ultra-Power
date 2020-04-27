@@ -113,15 +113,17 @@ var Directions;
     Directions["Left"] = "left";
     Directions["Right"] = "right";
 })(Directions || (Directions = {}));
+// Global factory creates sprites
+let physicsFactory;
 // An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
 class Entity {
-    constructor(sprite, config) {
-        this.sprite = sprite;
+    constructor(x, y, key, config) {
         this.state = States.STATE_WALKING;
         this.stateData = {
             direction: Directions.Down
         };
-        this.textureName = this.sprite.texture.key;
+        this.sprite = physicsFactory.sprite(x, y, key, 0);
+        this.textureName = key;
         this.health = (config.health) ? config.health : 100;
         this.speed = (config.speed) ? config.speed : 1;
         this.attackRange = (config.attackRange) ? config.attackRange : 10;
@@ -198,8 +200,8 @@ Entity.entities = [];
 // Global player
 let player;
 class Player extends Entity {
-    constructor(sprite, config) {
-        super(sprite, config);
+    constructor(x, y, key, config) {
+        super(x, y, key, config);
         this.attackRate = 1;
         this.attackAnim = config.attackAnim;
     }
@@ -267,8 +269,8 @@ class Player extends Entity {
     }
 }
 class Monster extends Entity {
-    constructor(sprite, config) {
-        super(sprite, config);
+    constructor(x, y, key, config) {
+        super(x, y, key, config);
         this.stateData = { direction: Directions.Down, distToPlayer: Number.POSITIVE_INFINITY };
         this.minDistToPlayer = config.minDistToPlayer;
         Monster.monsterGroup.add(this.sprite);
@@ -361,6 +363,7 @@ class WorldScene extends Phaser.Scene {
     preload() {
     }
     create() {
+        physicsFactory = new Phaser.Physics.Arcade.Factory(this.physics.world);
         this.createMap();
         this.createPlayer();
         this.createMonsters();
@@ -378,16 +381,15 @@ class WorldScene extends Phaser.Scene {
         this.physics.world.bounds.height = this.map.heightInPixels;
     }
     createPlayer() {
-        this.player = new Player(this.physics.add.sprite(50, 100, 'fighter', 0), { speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
+        this.player = new Player(50, 100, 'fighter', { speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
         player = this.player;
-        this.player.sprite.setCollideWorldBounds(true);
     }
     createMonsters() {
         Monster.monsterGroup = new Phaser.Physics.Arcade.Group(this.physics.world, this);
         let randPos = new Phaser.Math.Vector2();
         for (var i = 0; i < 13; i++) {
             randPos = Phaser.Math.RandomXY(randPos, 300);
-            new Monster(this.physics.add.sprite(randPos.x + 150, randPos.y + 150, 'skeleton', 0), { speed: Math.random() * 9 + 1, minDistToPlayer: 50, collideWorldBounds: true });
+            new Monster(randPos.x + 150, randPos.y + 150, 'skeleton', { speed: Math.random() * 9 + 1, minDistToPlayer: 50, collideWorldBounds: true });
         }
     }
     update(timeStamp, deltaInMs) {
