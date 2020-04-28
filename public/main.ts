@@ -143,6 +143,7 @@ enum Directions {
 }
 
 interface EntityConfig {
+    name?: string;
     speed?: number;
     health?: number;
     attackRange?: number;
@@ -170,17 +171,22 @@ abstract class Entity {
     
 
     constructor(x: number, y: number, key: string, config: EntityConfig) {
+
         this.sprite = physicsFactory.sprite(x, y, key, 0);
 
         this.textureName = key;
+
         this.health = (config.health) ? config.health: 100;
         this.speed = (config.speed) ? config.speed : 1;
         this.attackRange = (config.attackRange) ? config.attackRange : 10;
         this.attackFOV = (config.attackRange) ? config.attackRange : 90;
+        this.sprite.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
+        this.sprite.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
 
+        this.sprite.setCircle(this.sprite.width * this.sprite.scale);
         this.dump();
-        Entity.entities.push(this);
     }
+
     sprite: Phaser.Physics.Arcade.Sprite;
     speed: number;
     health: number;
@@ -208,7 +214,7 @@ abstract class Entity {
 
     move(direction: Phaser.Math.Vector2, delta: number): void {
         let movement = direction.normalize().scale(delta * this.speed);
-        this.sprite.body;
+        this.sprite.setVelocity(movement.x, movement.y);
         this.updateDirection();
     }
 
@@ -217,18 +223,15 @@ abstract class Entity {
     }
 
     dump() {
-        let stateData = '';
-        for (var prop in this.stateData) {
-            '       ' + prop + ' : ' + this.stateData[prop] + '\n';
-        }
-
-        console.log(`${this.textureName}: 
+        console.log(`${this.sprite.name}:
+    Texture: ${this.textureName}
     Health: ${this.health}
     Speed: ${this.speed}
     Attack Range: ${this.attackRange}
     Attack FOV: ${this.attackFOV}
     Anim State: ${this.state}
-    State Data: ${stateData}
+    State Data: ${JSON.stringify(this.stateData)}
+    Sprite: ${JSON.stringify(this.sprite.toJSON())}
 `
         );
     }
@@ -260,7 +263,6 @@ abstract class Entity {
     abstract updateState(delta: number): void;
 
     update(timeStamp: number, delta: number): void {
-        console.log('update!');
         this.getNextState();
         this.updateState(delta);
     };
@@ -513,7 +515,7 @@ class WorldScene extends Phaser.Scene {
     }
 
     createPlayer(): void {
-        this.player = new Player(50, 100, 'fighter', { speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
+        this.player = new Player(50, 100, 'fighter', { name: '',speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
         player = this.player;
     }
 
@@ -522,7 +524,7 @@ class WorldScene extends Phaser.Scene {
 
         let randPos = new Phaser.Math.Vector2();
         
-        for (var i = 0; i < 13; i++)
+        for (var i = 0; i < 5; i++)
         {
             randPos = Phaser.Math.RandomXY(randPos, 300);
             new Monster(randPos.x + 150, randPos.y + 150, 'skeleton', { speed: Math.random() * 9 + 1, minDistToPlayer: 50, collideWorldBounds: true });
@@ -540,12 +542,14 @@ var config: Phaser.Types.Core.GameConfig = {
     width: 640,
     height: 480,
     zoom: 1.5,
+
     render: {
         pixelArt: true,
     },
     physics: {
         default: 'arcade',
         arcade: {
+            debug: true,
             gravity: { y: 0 }
         }
     },

@@ -128,8 +128,10 @@ class Entity {
         this.speed = (config.speed) ? config.speed : 1;
         this.attackRange = (config.attackRange) ? config.attackRange : 10;
         this.attackFOV = (config.attackRange) ? config.attackRange : 90;
+        this.sprite.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
+        this.sprite.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
+        this.sprite.setCircle(this.sprite.width * this.sprite.scale);
         this.dump();
-        Entity.entities.push(this);
     }
     static updateAllEntities(timeStamp, delta) {
         var ts = timeStamp;
@@ -147,23 +149,21 @@ class Entity {
     }
     move(direction, delta) {
         let movement = direction.normalize().scale(delta * this.speed);
-        this.sprite.body;
+        this.sprite.setVelocity(movement.x, movement.y);
         this.updateDirection();
     }
     takeDamage(amount) {
     }
     dump() {
-        let stateData = '';
-        for (var prop in this.stateData) {
-            '       ' + prop + ' : ' + this.stateData[prop] + '\n';
-        }
-        console.log(`${this.textureName}: 
+        console.log(`${this.sprite.name}:
+    Texture: ${this.textureName}
     Health: ${this.health}
     Speed: ${this.speed}
     Attack Range: ${this.attackRange}
     Attack FOV: ${this.attackFOV}
     Anim State: ${this.state}
-    State Data: ${stateData}
+    State Data: ${JSON.stringify(this.stateData)}
+    Sprite: ${JSON.stringify(this.sprite.toJSON())}
 `);
     }
     // Updates the currently facing animation direction
@@ -381,13 +381,13 @@ class WorldScene extends Phaser.Scene {
         this.physics.world.bounds.height = this.map.heightInPixels;
     }
     createPlayer() {
-        this.player = new Player(50, 100, 'fighter', { speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
+        this.player = new Player(50, 100, 'fighter', { name: '', speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
         player = this.player;
     }
     createMonsters() {
         Monster.monsterGroup = new Phaser.Physics.Arcade.Group(this.physics.world, this);
         let randPos = new Phaser.Math.Vector2();
-        for (var i = 0; i < 13; i++) {
+        for (var i = 0; i < 5; i++) {
             randPos = Phaser.Math.RandomXY(randPos, 300);
             new Monster(randPos.x + 150, randPos.y + 150, 'skeleton', { speed: Math.random() * 9 + 1, minDistToPlayer: 50, collideWorldBounds: true });
         }
@@ -409,6 +409,7 @@ var config = {
     physics: {
         default: 'arcade',
         arcade: {
+            debug: true,
             gravity: { y: 0 }
         }
     },
