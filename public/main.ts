@@ -160,7 +160,7 @@ interface StateData {
 let physicsFactory : Phaser.Physics.Arcade.Factory;
 
 // An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
-abstract class Entity {
+abstract class Entity extends Phaser.Physics.Arcade.Sprite {
     static entities: Entity[] = [];
 
     static updateAllEntities(timeStamp: number, delta: number): void {
@@ -171,23 +171,26 @@ abstract class Entity {
     
 
     constructor(x: number, y: number, key: string, config: EntityConfig) {
+        super(physicsFactory.scene, x, y, key, 0);
 
-        this.sprite = physicsFactory.sprite(x, y, key, 0);
+        physicsFactory.existing(this);
+        this.enableBody(true, x, y, true, true);
 
-        this.textureName = key;
+        // this.setMaxVelocity(this.speed, this.speed);
 
+        this.setVisible(true);
+        this.baseTextureName = key;
         this.health = (config.health) ? config.health: 100;
         this.speed = (config.speed) ? config.speed : 1;
         this.attackRange = (config.attackRange) ? config.attackRange : 10;
         this.attackFOV = (config.attackRange) ? config.attackRange : 90;
-        this.sprite.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
-        this.sprite.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
+        this.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
+        this.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
 
-        this.sprite.setCircle(this.sprite.width * this.sprite.scale);
         this.dump();
     }
 
-    sprite: Phaser.Physics.Arcade.Sprite;
+    
     speed: number;
     health: number;
     attackRange: number;
@@ -199,10 +202,10 @@ abstract class Entity {
         direction: Directions.Down
     }
 
-    protected textureName: string;
+    protected baseTextureName: string;
     protected playAnim(name: LPCAnim, ignoreIfPlaying = true): string {
-        let fullName = `${this.textureName}_${name}_${this.stateData.direction}`;
-        this.sprite.play(fullName, ignoreIfPlaying);
+        let fullName = `${this.baseTextureName}_${name}_${this.stateData.direction}`;
+        this.play(fullName, ignoreIfPlaying);
         return fullName;
     }
 
@@ -214,7 +217,7 @@ abstract class Entity {
 
     move(direction: Phaser.Math.Vector2, delta: number): void {
         let movement = direction.normalize().scale(delta * this.speed);
-        this.sprite.setVelocity(movement.x, movement.y);
+        this.setVelocity(movement.x, movement.y);
         this.updateDirection();
     }
 
@@ -223,25 +226,27 @@ abstract class Entity {
     }
 
     dump() {
-        console.log(`${this.sprite.name}:
-    Texture: ${this.textureName}
+        console.log(`${this.name}:
+    Texture: ${this.texture.key}
     Health: ${this.health}
     Speed: ${this.speed}
     Attack Range: ${this.attackRange}
     Attack FOV: ${this.attackFOV}
     Anim State: ${this.state}
     State Data: ${JSON.stringify(this.stateData)}
-    Sprite: ${JSON.stringify(this.sprite.toJSON())}
+    Sprite: ${JSON.stringify(this.toJSON())}
 `
         );
     }
 
     // Updates the currently facing animation direction
     private updateDirection(): Directions {
-        let currentVelocity = this.sprite.body.velocity;
+        let currentVelocity = this.body.velocity;
+
         if (currentVelocity.x == 0 && currentVelocity.y == 0) {
             return this.stateData.direction;
         }
+        
         let angle = currentVelocity.angle() * (180 / Math.PI);
 
         if (angle <= 45 || angle >= 315) {
@@ -253,7 +258,7 @@ abstract class Entity {
         } else if (angle > 225 && angle < 315) {
             this.stateData.direction = Directions.Up;
         } else {
-            console.log(`${this.textureName}: angle=${angle}`);
+            console.log(`${this.name}: angle=${angle}, velocity = ${currentVelocity.x}, ${currentVelocity.y}`);
         }
 
         return this.stateData.direction;
@@ -282,9 +287,9 @@ interface PlayerStateData extends StateData { }
 class Player extends Entity {
 
     constructor(x: number, y: number, key: string, config: PlayerConfig) {
-        super(x, y, key,  config);
+        super(x, y, key, config);
+        
         this.attackAnim = config.attackAnim;
-
     }
 
     stateData: PlayerStateData;
@@ -300,7 +305,7 @@ class Player extends Entity {
                 }
                 break;
             case States.STATE_ATTACKING:
-                if (this.sprite.anims.getProgress() >= 1) {
+                if (this.anims.getProgress() >= 1) {
                     this.state = States.STATE_DOING_DAMAGE;
                 }
                 break;
@@ -338,14 +343,14 @@ class Player extends Entity {
 
                 this.move(movement, delta);
 
-                if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
+                if (this.body.velocity.x !== 0 || this.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
                 else
-                    this.sprite.anims.stop();
+                    this.anims.stop();
                 break;
 
             case States.STATE_ATTACKING:
-                this.sprite.setVelocity(0, 0);
+                this.setVelocity(0, 0);
                 this.playAnim(this.attackAnim, true);
                 break;
             case States.STATE_DOING_DAMAGE:
@@ -375,7 +380,7 @@ class Monster extends Entity {
         super(x, y, key, config);
         this.minDistToPlayer = config.minDistToPlayer;
 
-        Monster.monsterGroup.add(this.sprite);
+        Monster.monsterGroup.add(this);
 
         Monster.all.push(this);
     }
@@ -390,7 +395,7 @@ class Monster extends Entity {
     }
 
     getNextState(): States {
-        this.stateData.distToPlayer = player.sprite.getCenter().subtract(this.sprite.getCenter()).lengthSq();
+        this.stateData.distToPlayer = player.getCenter().subtract(this.getCenter()).lengthSq();
         switch (this.state) {
             case States.STATE_WALKING:
                 if (this.stateData.distToPlayer < this.minDistToPlayer * this.minDistToPlayer) {
@@ -400,7 +405,7 @@ class Monster extends Entity {
             case States.STATE_ATTACKING:
                 if (this.stateData.distToPlayer > this.minDistToPlayer * this.minDistToPlayer) {
                     this.state = States.STATE_WALKING;
-                } else if (this.sprite.anims.getProgress() >= 1) {
+                } else if (this.anims.getProgress() >= 1) {
                     this.state = States.STATE_DOING_DAMAGE;
                 }
                 break;
@@ -419,14 +424,14 @@ class Monster extends Entity {
     updateState(delta: number): void {
         switch (this.state) {
             case States.STATE_WALKING:
-                let toPlayer = player.sprite.getCenter().subtract(this.sprite.getCenter());
+                let toPlayer = player.getCenter().subtract(this.getCenter());
                 this.move(toPlayer, delta);
 
-                if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
+                if (this.body.velocity.x !== 0 || this.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
                 break;
             case States.STATE_ATTACKING:
-                this.sprite.setVelocity(0, 0);
+                this.setVelocity(0, 0);
                 this.playAnim(LPCAnim.slash, true);
                 break;
             case States.STATE_DOING_DAMAGE:
@@ -521,7 +526,7 @@ class WorldScene extends Phaser.Scene {
 
     createMonsters(): void {
         Monster.monsterGroup = new Phaser.Physics.Arcade.Group(this.physics.world, this);
-
+        Monster.monsterGroup.runChildUpdate = true;
         let randPos = new Phaser.Math.Vector2();
         
         for (var i = 0; i < 5; i++)
@@ -532,7 +537,8 @@ class WorldScene extends Phaser.Scene {
     }
 
     update(timeStamp: number, deltaInMs: number) {
-        Entity.updateAllEntities(timeStamp, deltaInMs);
+        player.update(timeStamp, deltaInMs);
+        Monster.monsterGroup.preUpdate(timeStamp, deltaInMs);
     }
 };
 

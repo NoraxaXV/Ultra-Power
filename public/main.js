@@ -116,21 +116,24 @@ var Directions;
 // Global factory creates sprites
 let physicsFactory;
 // An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
-class Entity {
+class Entity extends Phaser.Physics.Arcade.Sprite {
     constructor(x, y, key, config) {
+        super(physicsFactory.scene, x, y, key, 0);
         this.state = States.STATE_WALKING;
         this.stateData = {
             direction: Directions.Down
         };
-        this.sprite = physicsFactory.sprite(x, y, key, 0);
-        this.textureName = key;
+        physicsFactory.existing(this);
+        this.enableBody(true, x, y, true, true);
+        // this.setMaxVelocity(this.speed, this.speed);
+        this.setVisible(true);
+        this.baseTextureName = key;
         this.health = (config.health) ? config.health : 100;
         this.speed = (config.speed) ? config.speed : 1;
         this.attackRange = (config.attackRange) ? config.attackRange : 10;
         this.attackFOV = (config.attackRange) ? config.attackRange : 90;
-        this.sprite.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
-        this.sprite.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
-        this.sprite.setCircle(this.sprite.width * this.sprite.scale);
+        this.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
+        this.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
         this.dump();
     }
     static updateAllEntities(timeStamp, delta) {
@@ -139,8 +142,8 @@ class Entity {
         this.entities.forEach((entity) => { entity.update(ts, d); });
     }
     playAnim(name, ignoreIfPlaying = true) {
-        let fullName = `${this.textureName}_${name}_${this.stateData.direction}`;
-        this.sprite.play(fullName, ignoreIfPlaying);
+        let fullName = `${this.baseTextureName}_${name}_${this.stateData.direction}`;
+        this.play(fullName, ignoreIfPlaying);
         return fullName;
     }
     checkForCollision(gameScene, objects) {
@@ -149,26 +152,26 @@ class Entity {
     }
     move(direction, delta) {
         let movement = direction.normalize().scale(delta * this.speed);
-        this.sprite.setVelocity(movement.x, movement.y);
+        this.setVelocity(movement.x, movement.y);
         this.updateDirection();
     }
     takeDamage(amount) {
     }
     dump() {
-        console.log(`${this.sprite.name}:
-    Texture: ${this.textureName}
+        console.log(`${this.name}:
+    Texture: ${this.texture.key}
     Health: ${this.health}
     Speed: ${this.speed}
     Attack Range: ${this.attackRange}
     Attack FOV: ${this.attackFOV}
     Anim State: ${this.state}
     State Data: ${JSON.stringify(this.stateData)}
-    Sprite: ${JSON.stringify(this.sprite.toJSON())}
+    Sprite: ${JSON.stringify(this.toJSON())}
 `);
     }
     // Updates the currently facing animation direction
     updateDirection() {
-        let currentVelocity = this.sprite.body.velocity;
+        let currentVelocity = this.body.velocity;
         if (currentVelocity.x == 0 && currentVelocity.y == 0) {
             return this.stateData.direction;
         }
@@ -186,7 +189,7 @@ class Entity {
             this.stateData.direction = Directions.Up;
         }
         else {
-            console.log(`${this.textureName}: angle=${angle}`);
+            console.log(`${this.name}: angle=${angle}, velocity = ${currentVelocity.x}, ${currentVelocity.y}`);
         }
         return this.stateData.direction;
     }
@@ -214,7 +217,7 @@ class Player extends Entity {
                 }
                 break;
             case States.STATE_ATTACKING:
-                if (this.sprite.anims.getProgress() >= 1) {
+                if (this.anims.getProgress() >= 1) {
                     this.state = States.STATE_DOING_DAMAGE;
                 }
                 break;
@@ -250,13 +253,13 @@ class Player extends Entity {
                     movement.y = 1;
                 }
                 this.move(movement, delta);
-                if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
+                if (this.body.velocity.x !== 0 || this.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
                 else
-                    this.sprite.anims.stop();
+                    this.anims.stop();
                 break;
             case States.STATE_ATTACKING:
-                this.sprite.setVelocity(0, 0);
+                this.setVelocity(0, 0);
                 this.playAnim(this.attackAnim, true);
                 break;
             case States.STATE_DOING_DAMAGE:
@@ -273,7 +276,7 @@ class Monster extends Entity {
         super(x, y, key, config);
         this.stateData = { direction: Directions.Down, distToPlayer: Number.POSITIVE_INFINITY };
         this.minDistToPlayer = config.minDistToPlayer;
-        Monster.monsterGroup.add(this.sprite);
+        Monster.monsterGroup.add(this);
         Monster.all.push(this);
     }
     takeDamage(amount) {
@@ -281,7 +284,7 @@ class Monster extends Entity {
         console.log('Monster took damage! health = ' + this.health);
     }
     getNextState() {
-        this.stateData.distToPlayer = player.sprite.getCenter().subtract(this.sprite.getCenter()).lengthSq();
+        this.stateData.distToPlayer = player.getCenter().subtract(this.getCenter()).lengthSq();
         switch (this.state) {
             case States.STATE_WALKING:
                 if (this.stateData.distToPlayer < this.minDistToPlayer * this.minDistToPlayer) {
@@ -292,7 +295,7 @@ class Monster extends Entity {
                 if (this.stateData.distToPlayer > this.minDistToPlayer * this.minDistToPlayer) {
                     this.state = States.STATE_WALKING;
                 }
-                else if (this.sprite.anims.getProgress() >= 1) {
+                else if (this.anims.getProgress() >= 1) {
                     this.state = States.STATE_DOING_DAMAGE;
                 }
                 break;
@@ -311,13 +314,13 @@ class Monster extends Entity {
     updateState(delta) {
         switch (this.state) {
             case States.STATE_WALKING:
-                let toPlayer = player.sprite.getCenter().subtract(this.sprite.getCenter());
+                let toPlayer = player.getCenter().subtract(this.getCenter());
                 this.move(toPlayer, delta);
-                if (this.sprite.body.velocity.x !== 0 || this.sprite.body.velocity.y !== 0)
+                if (this.body.velocity.x !== 0 || this.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
                 break;
             case States.STATE_ATTACKING:
-                this.sprite.setVelocity(0, 0);
+                this.setVelocity(0, 0);
                 this.playAnim(LPCAnim.slash, true);
                 break;
             case States.STATE_DOING_DAMAGE:
@@ -386,6 +389,7 @@ class WorldScene extends Phaser.Scene {
     }
     createMonsters() {
         Monster.monsterGroup = new Phaser.Physics.Arcade.Group(this.physics.world, this);
+        Monster.monsterGroup.runChildUpdate = true;
         let randPos = new Phaser.Math.Vector2();
         for (var i = 0; i < 5; i++) {
             randPos = Phaser.Math.RandomXY(randPos, 300);
@@ -393,7 +397,8 @@ class WorldScene extends Phaser.Scene {
         }
     }
     update(timeStamp, deltaInMs) {
-        Entity.updateAllEntities(timeStamp, deltaInMs);
+        player.update(timeStamp, deltaInMs);
+        Monster.monsterGroup.preUpdate(timeStamp, deltaInMs);
     }
 }
 ;
