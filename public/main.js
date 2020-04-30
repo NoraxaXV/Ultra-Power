@@ -123,6 +123,8 @@ class Entity extends Phaser.Physics.Arcade.Sprite {
         this.stateData = {
             direction: Directions.Down
         };
+        // Register our new sprite with the scene and the physics world
+        physicsFactory.scene.add.existing(this);
         physicsFactory.existing(this);
         this.enableBody(true, x, y, true, true);
         // this.setMaxVelocity(this.speed, this.speed);
@@ -134,7 +136,7 @@ class Entity extends Phaser.Physics.Arcade.Sprite {
         this.attackFOV = (config.attackRange) ? config.attackRange : 90;
         this.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
         this.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
-        this.dump();
+        // this.dump();
     }
     static updateAllEntities(timeStamp, delta) {
         var ts = timeStamp;

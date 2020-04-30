@@ -173,12 +173,16 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
     constructor(x: number, y: number, key: string, config: EntityConfig) {
         super(physicsFactory.scene, x, y, key, 0);
 
+        // Register our new sprite with the scene and the physics world
+        physicsFactory.scene.add.existing(this);
         physicsFactory.existing(this);
+
         this.enableBody(true, x, y, true, true);
 
         // this.setMaxVelocity(this.speed, this.speed);
 
         this.setVisible(true);
+
         this.baseTextureName = key;
         this.health = (config.health) ? config.health: 100;
         this.speed = (config.speed) ? config.speed : 1;
@@ -187,7 +191,7 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
         this.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
         this.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
 
-        this.dump();
+        // this.dump();
     }
 
     
