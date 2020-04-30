@@ -1,5 +1,8 @@
 "use strict";
-// Global Static class to keep track of input
+let gameScene;
+// Global factory creates sprites
+let physicsFactory;
+// Global Static Input class to keep track of input
 class Input {
     constructor() {
         throw new TypeError('Input is a static class and cannot be instatianted.');
@@ -75,7 +78,11 @@ class LPCSprite {
                     // Anims are set using the following pattern: name_animation_direction (eg: wizard_walk_up)
                     // console.log(`creating ${textureName}_${currAnim.name}_${directions[d]} with anim reel ${reel} and textureName ${loadName}`);
                     let anim = game.anims.create({
-                        key: `${textureName}_${currAnim.name}_${directions[d]}`, duration: currAnim.duration, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName
+                        key: `${textureName}_${currAnim.name}_${directions[d]}`,
+                        duration: currAnim.duration,
+                        frames: game.anims.generateFrameNumbers(loadName, { frames: reel }),
+                        repeat: currAnim.loop,
+                        defaultTextureKey: loadName
                     });
                     this.animCache.push(anim);
                     if (anim == false) {
@@ -113,8 +120,6 @@ var Directions;
     Directions["Left"] = "left";
     Directions["Right"] = "right";
 })(Directions || (Directions = {}));
-// Global factory creates sprites
-let physicsFactory;
 // An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
 class Entity extends Phaser.Physics.Arcade.Sprite {
     constructor(x, y, key, config) {
@@ -124,19 +129,21 @@ class Entity extends Phaser.Physics.Arcade.Sprite {
             direction: Directions.Down
         };
         // Register our new sprite with the scene and the physics world
-        physicsFactory.scene.add.existing(this);
-        physicsFactory.existing(this);
+        gameScene.add.existing(this);
+        physicsFactory.existing(this, false);
         this.enableBody(true, x, y, true, true);
         // this.setMaxVelocity(this.speed, this.speed);
-        this.setVisible(true);
         this.baseTextureName = key;
         this.health = (config.health) ? config.health : 100;
         this.speed = (config.speed) ? config.speed : 1;
         this.attackRange = (config.attackRange) ? config.attackRange : 10;
         this.attackFOV = (config.attackRange) ? config.attackRange : 90;
         this.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
+        this.setDataEnabled();
+        this.data.merge(this.stateData);
+        this.setSize(32, 64);
         this.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
-        // this.dump();
+        this.dump();
     }
     static updateAllEntities(timeStamp, delta) {
         var ts = timeStamp;
@@ -146,11 +153,10 @@ class Entity extends Phaser.Physics.Arcade.Sprite {
     playAnim(name, ignoreIfPlaying = true) {
         let fullName = `${this.baseTextureName}_${name}_${this.stateData.direction}`;
         this.play(fullName, ignoreIfPlaying);
+        // this.setOriginFromFrame();
         return fullName;
     }
     checkForCollision(gameScene, objects) {
-        objects.getChildren().forEach((object) => {
-        });
     }
     move(direction, delta) {
         let movement = direction.normalize().scale(delta * this.speed);
@@ -167,9 +173,10 @@ class Entity extends Phaser.Physics.Arcade.Sprite {
     Attack Range: ${this.attackRange}
     Attack FOV: ${this.attackFOV}
     Anim State: ${this.state}
-    State Data: ${JSON.stringify(this.stateData)}
     Sprite: ${JSON.stringify(this.toJSON())}
-`);
+`
+        // State Data: ${JSON.stringify(this.data.values)}
+        );
     }
     // Updates the currently facing animation direction
     updateDirection() {
@@ -198,6 +205,7 @@ class Entity extends Phaser.Physics.Arcade.Sprite {
     update(timeStamp, delta) {
         this.getNextState();
         this.updateState(delta);
+        // this.setData(this.stateData);
     }
     ;
 }
@@ -368,6 +376,7 @@ class WorldScene extends Phaser.Scene {
     preload() {
     }
     create() {
+        gameScene = this;
         physicsFactory = new Phaser.Physics.Arcade.Factory(this.physics.world);
         this.createMap();
         this.createPlayer();
@@ -386,7 +395,7 @@ class WorldScene extends Phaser.Scene {
         this.physics.world.bounds.height = this.map.heightInPixels;
     }
     createPlayer() {
-        this.player = new Player(50, 100, 'fighter', { name: '', speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
+        this.player = new Player(50, 100, 'fighter', { name: 'player', speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
         player = this.player;
     }
     createMonsters() {

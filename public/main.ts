@@ -1,4 +1,9 @@
-﻿// Global Static class to keep track of input
+﻿
+let gameScene: Phaser.Scene;
+// Global factory creates sprites
+let physicsFactory: Phaser.Physics.Arcade.Factory;
+
+// Global Static Input class to keep track of input
 class Input {
     static keyboard: Phaser.Input.Keyboard.KeyboardPlugin;
     static cursors: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -102,8 +107,13 @@ class LPCSprite {
                     // console.log(`creating ${textureName}_${currAnim.name}_${directions[d]} with anim reel ${reel} and textureName ${loadName}`);
 
                     let anim = game.anims.create({
-                        key: `${textureName}_${currAnim.name}_${directions[d]}`, duration: currAnim.duration, frames: game.anims.generateFrameNumbers(loadName, { frames: reel }), repeat: currAnim.loop, defaultTextureKey: loadName
-                    })
+                        key: `${textureName}_${currAnim.name}_${directions[d]}`,
+                        duration: currAnim.duration,
+                        frames: game.anims.generateFrameNumbers(loadName, { frames: reel }),
+                        repeat: currAnim.loop,
+                        defaultTextureKey: loadName
+                    });
+
                     this.animCache.push(anim);
                     if (anim == false) {
                         throw new Error(`Create anim failed, invalid key! animKey = ${textureName}_${currAnim.name}_${directions[d]}`);
@@ -156,8 +166,7 @@ interface StateData {
     direction: Directions;
 }
 
-// Global factory creates sprites
-let physicsFactory : Phaser.Physics.Arcade.Factory;
+
 
 // An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
 abstract class Entity extends Phaser.Physics.Arcade.Sprite {
@@ -168,33 +177,37 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
         var d = delta;
         this.entities.forEach((entity) => { entity.update(ts, d) });
     }
-    
+
 
     constructor(x: number, y: number, key: string, config: EntityConfig) {
         super(physicsFactory.scene, x, y, key, 0);
 
         // Register our new sprite with the scene and the physics world
-        physicsFactory.scene.add.existing(this);
-        physicsFactory.existing(this);
+        gameScene.add.existing(this);
+        physicsFactory.existing(this, false);
 
         this.enableBody(true, x, y, true, true);
 
+        
         // this.setMaxVelocity(this.speed, this.speed);
 
-        this.setVisible(true);
-
         this.baseTextureName = key;
-        this.health = (config.health) ? config.health: 100;
+        this.health = (config.health) ? config.health : 100;
         this.speed = (config.speed) ? config.speed : 1;
         this.attackRange = (config.attackRange) ? config.attackRange : 10;
         this.attackFOV = (config.attackRange) ? config.attackRange : 90;
         this.name = (config.name) ? config.name : key + (Entity.entities.push(this) - 1);
+
+        this.setDataEnabled();
+        this.data.merge(this.stateData);
+
+        this.setSize(32, 64);
         this.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
 
-        // this.dump();
+        this.dump();
     }
 
-    
+
     speed: number;
     health: number;
     attackRange: number;
@@ -210,13 +223,12 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
     protected playAnim(name: LPCAnim, ignoreIfPlaying = true): string {
         let fullName = `${this.baseTextureName}_${name}_${this.stateData.direction}`;
         this.play(fullName, ignoreIfPlaying);
+        // this.setOriginFromFrame();
         return fullName;
     }
 
-    protected checkForCollision(gameScene: Phaser.Scene, objects: Phaser.Physics.Arcade.Group): Phaser.Physics.Arcade.Group | void  {
-        objects.getChildren().forEach((object) => {
-            
-        });
+    protected checkForCollision(gameScene: Phaser.Scene, objects: Phaser.Physics.Arcade.Group): Phaser.Physics.Arcade.Group | void {
+
     }
 
     move(direction: Phaser.Math.Vector2, delta: number): void {
@@ -237,9 +249,9 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
     Attack Range: ${this.attackRange}
     Attack FOV: ${this.attackFOV}
     Anim State: ${this.state}
-    State Data: ${JSON.stringify(this.stateData)}
     Sprite: ${JSON.stringify(this.toJSON())}
 `
+            // State Data: ${JSON.stringify(this.data.values)}
         );
     }
 
@@ -250,7 +262,7 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
         if (currentVelocity.x == 0 && currentVelocity.y == 0) {
             return this.stateData.direction;
         }
-        
+
         let angle = currentVelocity.angle() * (180 / Math.PI);
 
         if (angle <= 45 || angle >= 315) {
@@ -274,6 +286,8 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
     update(timeStamp: number, delta: number): void {
         this.getNextState();
         this.updateState(delta);
+
+        // this.setData(this.stateData);
     };
 
 
@@ -281,8 +295,7 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
 // Global player
 let player: Player;
 
-interface PlayerConfig extends EntityConfig
-{
+interface PlayerConfig extends EntityConfig {
     attackAnim: LPCAnim
 }
 
@@ -292,7 +305,7 @@ class Player extends Entity {
 
     constructor(x: number, y: number, key: string, config: PlayerConfig) {
         super(x, y, key, config);
-        
+
         this.attackAnim = config.attackAnim;
     }
 
@@ -367,19 +380,17 @@ class Player extends Entity {
     }
 }
 
-interface MonsterConfig extends EntityConfig
-{
+interface MonsterConfig extends EntityConfig {
     minDistToPlayer: number;
 }
-interface MonsterStateData extends StateData
-{
+interface MonsterStateData extends StateData {
     distToPlayer: number;
 }
 
 class Monster extends Entity {
     static all: Monster[] = [];
     static monsterGroup: Phaser.Physics.Arcade.Group;
-    
+
     constructor(x: number, y: number, key: string, config: MonsterConfig) {
         super(x, y, key, config);
         this.minDistToPlayer = config.minDistToPlayer;
@@ -392,8 +403,7 @@ class Monster extends Entity {
     stateData: MonsterStateData = { direction: Directions.Down, distToPlayer: Number.POSITIVE_INFINITY }
 
     private minDistToPlayer: number;
-    takeDamage(amount: number)
-    {
+    takeDamage(amount: number) {
         this.health -= amount;
         console.log('Monster took damage! health = ' + this.health);
     }
@@ -500,6 +510,7 @@ class WorldScene extends Phaser.Scene {
     }
 
     create() {
+        gameScene = this;
         physicsFactory = new Phaser.Physics.Arcade.Factory(this.physics.world);
 
         this.createMap();
@@ -524,7 +535,7 @@ class WorldScene extends Phaser.Scene {
     }
 
     createPlayer(): void {
-        this.player = new Player(50, 100, 'fighter', { name: '',speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
+        this.player = new Player(50, 100, 'fighter', { name: 'player', speed: 8, attackAnim: LPCAnim.slash, collideWorldBounds: true });
         player = this.player;
     }
 
@@ -532,9 +543,8 @@ class WorldScene extends Phaser.Scene {
         Monster.monsterGroup = new Phaser.Physics.Arcade.Group(this.physics.world, this);
         Monster.monsterGroup.runChildUpdate = true;
         let randPos = new Phaser.Math.Vector2();
-        
-        for (var i = 0; i < 5; i++)
-        {
+
+        for (var i = 0; i < 5; i++) {
             randPos = Phaser.Math.RandomXY(randPos, 300);
             new Monster(randPos.x + 150, randPos.y + 150, 'skeleton', { speed: Math.random() * 9 + 1, minDistToPlayer: 50, collideWorldBounds: true });
         }
