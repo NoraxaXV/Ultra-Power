@@ -169,7 +169,7 @@ interface StateData {
 
 
 // An Entity contains the functionality players and monsters share: the ablity to move, attack, etc..
-abstract class Entity extends Phaser.Physics.Arcade.Sprite {
+abstract class Entity extends Phaser.GameObjects.Container {
     static entities: Entity[] = [];
 
     static updateAllEntities(timeStamp: number, delta: number): void {
@@ -180,13 +180,16 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
 
 
     constructor(x: number, y: number, key: string, config: EntityConfig) {
-        super(physicsFactory.scene, x, y, key, 0);
+        super(physicsFactory.scene, x, y);
 
-        // Register our new sprite with the scene and the physics world
+        // Register our new entity with the scene and the physics world
         gameScene.add.existing(this);
         physicsFactory.existing(this, false);
 
-        this.enableBody(true, x, y, true, true);
+        // The sprite represnts the rendered character
+        this.sprite = gameScene.add.sprite(0, 0, key);
+
+        this.add(this.sprite);
 
         
         // this.setMaxVelocity(this.speed, this.speed);
@@ -201,12 +204,21 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
         this.setDataEnabled();
         this.data.merge(this.stateData);
 
-        this.setSize(32, 64);
-        this.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
+        this.body.setSize(32, 64, false);
+
+        // this.body.setCollideWorldBounds((config.collideWorldBounds) ? config.collideWorldBounds : false);
+        this.body.checkCollision.none = true;
 
         this.dump();
     }
 
+    // Override to Container.body to define the physics body as an Arcade body
+    body: Phaser.Physics.Arcade.Body;
+
+    // The sprite represents the rendered character
+    sprite: Phaser.GameObjects.Sprite
+
+    // collider: Phaser.GameObjects.Sprite;
 
     speed: number;
     health: number;
@@ -222,7 +234,7 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
     protected baseTextureName: string;
     protected playAnim(name: LPCAnim, ignoreIfPlaying = true): string {
         let fullName = `${this.baseTextureName}_${name}_${this.stateData.direction}`;
-        this.play(fullName, ignoreIfPlaying);
+        this.sprite.play(fullName, ignoreIfPlaying);
         // this.setOriginFromFrame();
         return fullName;
     }
@@ -233,7 +245,7 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
 
     move(direction: Phaser.Math.Vector2, delta: number): void {
         let movement = direction.normalize().scale(delta * this.speed);
-        this.setVelocity(movement.x, movement.y);
+        this.body.setVelocity(movement.x, movement.y);
         this.updateDirection();
     }
 
@@ -243,7 +255,7 @@ abstract class Entity extends Phaser.Physics.Arcade.Sprite {
 
     dump() {
         console.log(`${this.name}:
-    Texture: ${this.texture.key}
+    Texture: ${this.sprite.texture.key}
     Health: ${this.health}
     Speed: ${this.speed}
     Attack Range: ${this.attackRange}
@@ -305,7 +317,6 @@ class Player extends Entity {
 
     constructor(x: number, y: number, key: string, config: PlayerConfig) {
         super(x, y, key, config);
-
         this.attackAnim = config.attackAnim;
     }
 
@@ -322,7 +333,7 @@ class Player extends Entity {
                 }
                 break;
             case States.STATE_ATTACKING:
-                if (this.anims.getProgress() >= 1) {
+                if (this.sprite.anims.getProgress() >= 1) {
                     this.state = States.STATE_DOING_DAMAGE;
                 }
                 break;
@@ -363,11 +374,11 @@ class Player extends Entity {
                 if (this.body.velocity.x !== 0 || this.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
                 else
-                    this.anims.stop();
+                    this.sprite.anims.stop();
                 break;
 
             case States.STATE_ATTACKING:
-                this.setVelocity(0, 0);
+                this.body.setVelocity(0, 0);
                 this.playAnim(this.attackAnim, true);
                 break;
             case States.STATE_DOING_DAMAGE:
@@ -409,7 +420,8 @@ class Monster extends Entity {
     }
 
     getNextState(): States {
-        this.stateData.distToPlayer = player.getCenter().subtract(this.getCenter()).lengthSq();
+        this.stateData.distToPlayer = player.body.position.subtract(this.body.position).lengthSq();
+
         switch (this.state) {
             case States.STATE_WALKING:
                 if (this.stateData.distToPlayer < this.minDistToPlayer * this.minDistToPlayer) {
@@ -419,7 +431,7 @@ class Monster extends Entity {
             case States.STATE_ATTACKING:
                 if (this.stateData.distToPlayer > this.minDistToPlayer * this.minDistToPlayer) {
                     this.state = States.STATE_WALKING;
-                } else if (this.anims.getProgress() >= 1) {
+                } else if (this.sprite.anims.getProgress() >= 1) {
                     this.state = States.STATE_DOING_DAMAGE;
                 }
                 break;
@@ -438,14 +450,14 @@ class Monster extends Entity {
     updateState(delta: number): void {
         switch (this.state) {
             case States.STATE_WALKING:
-                let toPlayer = player.getCenter().subtract(this.getCenter());
+                let toPlayer = player.body.position.subtract(this.body.position);
                 this.move(toPlayer, delta);
 
                 if (this.body.velocity.x !== 0 || this.body.velocity.y !== 0)
                     this.playAnim(LPCAnim.walk, true);
                 break;
             case States.STATE_ATTACKING:
-                this.setVelocity(0, 0);
+                this.body.setVelocity(0, 0);
                 this.playAnim(LPCAnim.slash, true);
                 break;
             case States.STATE_DOING_DAMAGE:
@@ -544,7 +556,7 @@ class WorldScene extends Phaser.Scene {
         Monster.monsterGroup.runChildUpdate = true;
         let randPos = new Phaser.Math.Vector2();
 
-        for (var i = 0; i < 5; i++) {
+        for (var i = 0; i < 0; i++) {
             randPos = Phaser.Math.RandomXY(randPos, 300);
             new Monster(randPos.x + 150, randPos.y + 150, 'skeleton', { speed: Math.random() * 9 + 1, minDistToPlayer: 50, collideWorldBounds: true });
         }
